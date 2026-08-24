@@ -4,6 +4,8 @@
   import { splitStore } from '../../stores/split';
   import { terminalStore } from '../../stores/terminal';
   import { settingsStore } from '../../stores/settings.svelte';
+  import { getGitFileContent } from '../../services/git';
+  import { dirname } from '../../utils/path';
   import { getFileIcon } from '../../utils/fileIcons';
   import MaterialIcon from '../common/MaterialIcon.svelte';
   import SvgViewToggle from '../common/SvgViewToggle.svelte';
@@ -19,6 +21,7 @@
     DiffEditorComponent?: any;
     MarkdownPreviewComponent?: any;
     ImageViewerComponent?: any;
+    ImageDiffComponent?: any;
     SettingsPageComponent?: any;
     WelcomeTabComponent?: any;
   }
@@ -32,6 +35,7 @@
     DiffEditorComponent,
     MarkdownPreviewComponent,
     ImageViewerComponent,
+    ImageDiffComponent,
     SettingsPageComponent,
     WelcomeTabComponent,
   }: Props = $props();
@@ -55,39 +59,86 @@
       activeTab.content === null &&
       activeTab.path &&
       !activeTab.path.startsWith('Untitled') &&
-      !activeTab.isLargeFile &&
+      !activeTab.isLoading &&
       !loadingTabIds.has(activeTab.id)
     ) {
       const tabId = activeTab.id;
       const path = activeTab.path;
       loadingTabIds.add(tabId);
       editorStore.setTabLoading(tabId, true);
-      invoke<string>('read_file_text', { path }).then(content => {
-        editorStore.setInitialContent(tabId, content);
-        // Also update the tab in split store
+
+      const syncToSplit = () => {
         const snap = editorStore.getTabsSnapshot();
         const updatedTab = snap.find(t => t.id === tabId);
         if (updatedTab) splitStore.updateTabInAllPanes(updatedTab);
-      }).catch(async err => {
-        if (String(err) === '__BINARY__') {
-          editorStore.setTabUnsupported(tabId, true);
-          editorStore.setInitialContent(tabId, '');
-        } else if (String(err) === '__LARGE_FILE__') {
-          try {
-            const chunked = await invoke<any>('read_file_chunked', { path });
-            editorStore.setInitialContent(tabId, chunked.content);
-            editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
-            const snap = editorStore.getTabsSnapshot();
-            const updatedTab = snap.find(t => t.id === tabId);
-            if (updatedTab) splitStore.updateTabInAllPanes(updatedTab);
-          } catch (e) { console.error(e); }
-        } else {
-          console.error('Failed to lazy load tab:', err);
-        }
-      }).finally(() => {
-        editorStore.setTabLoading(tabId, false);
-        loadingTabIds.delete(tabId);
-      });
+      };
+
+      if (activeTab.isDiff) {
+        // Diff tabs restored from a session have no content — refetch both
+        // sides: working-tree diffs read from disk, commit diffs from git.
+        const dir = dirname(path);
+        const currentRev = activeTab.diffCurrentRevision;
+        const originalRev = activeTab.diffOriginalRevision;
+        Promise.all([
+          currentRev && currentRev !== 'working-tree'
+            ? getGitFileContent(dir, path, currentRev)
+            : invoke<string>('read_file_text', { path }).then(c => c, (err: unknown) => {
+                if (String(err) === '__BINARY__') return '__UNSUPPORTED__';
+                throw err;
+              }),
+          originalRev
+            ? getGitFileContent(dir, path, originalRev)
+            : Promise.resolve(activeTab.diffOriginalContent ?? null),
+        ]).then(([current, original]) => {
+          const unsupported = current === '__UNSUPPORTED__';
+          editorStore.setInitialContent(tabId, unsupported ? '' : (current ?? ''));
+          editorStore.updateTab(tabId, {
+            diffOriginalContent: original ?? '',
+            ...(unsupported ? { isUnsupported: true } : {}),
+          });
+          syncToSplit();
+        }).catch(err => {
+          console.error('Failed to lazy load diff tab:', err);
+        }).finally(() => {
+          editorStore.setTabLoading(tabId, false);
+          loadingTabIds.delete(tabId);
+        });
+      } else if (activeTab.isLargeFile) {
+        // Large files: restore only the preview chunk instead of the full
+        // document, so a session-restored large tab rehydrates cheaply.
+        invoke<any>('read_file_chunked', { path }).then(chunked => {
+          editorStore.setInitialContent(tabId, chunked.content);
+          editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
+          syncToSplit();
+        }).catch(err => {
+          console.error('Failed to lazy load large tab:', err);
+        }).finally(() => {
+          editorStore.setTabLoading(tabId, false);
+          loadingTabIds.delete(tabId);
+        });
+      } else {
+        invoke<string>('read_file_text', { path }).then(content => {
+          editorStore.setInitialContent(tabId, content);
+          syncToSplit();
+        }).catch(async err => {
+          if (String(err) === '__BINARY__') {
+            editorStore.setTabUnsupported(tabId, true);
+            editorStore.setInitialContent(tabId, '');
+          } else if (String(err) === '__LARGE_FILE__') {
+            try {
+              const chunked = await invoke<any>('read_file_chunked', { path });
+              editorStore.setInitialContent(tabId, chunked.content);
+              editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
+              syncToSplit();
+            } catch (e) { console.error(e); }
+          } else {
+            console.error('Failed to lazy load tab:', err);
+          }
+        }).finally(() => {
+          editorStore.setTabLoading(tabId, false);
+          loadingTabIds.delete(tabId);
+        });
+      }
     }
   });
 
@@ -313,7 +364,7 @@
         <div
           role="tab"
           tabindex="0"
-          class="flex shrink-0 items-center gap-2 px-3 min-w-28 max-w-48 cursor-pointer border-t border-l border-r border-subtle -ml-px first:ml-0"
+          class="flex shrink-0 items-center gap-2 px-3 min-w-28 cursor-pointer border-t border-l border-r border-subtle -ml-px first:ml-0"
           class:bg-canvas={activeTabId === tab.id}
           class:text-primary={activeTabId === tab.id}
           class:border-t-2={activeTabId === tab.id}
@@ -339,15 +390,16 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-icon-default"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
           {:else}
             {@const iconTheme = settingsStore.effectiveSettings.icon_theme}
+            {@const baseName = tab.path ? tab.path.split(/[/\\]/).pop() || tab.name : tab.name}
             {#if !iconTheme || iconTheme === 'default'}
-              {@const Icon = getFileIcon(tab.name)}
+              {@const Icon = getFileIcon(baseName)}
               <Icon size={14} class="shrink-0 text-icon-default" />
             {:else if iconTheme === 'material'}
-              <MaterialIcon name={tab.name} size={14} />
+              <MaterialIcon name={baseName} size={14} />
             {/if}
           {/if}
 
-          <span class="text-xs truncate flex-1" class:italic={tab.isPreview}>
+          <span class="text-xs whitespace-nowrap" class:italic={tab.isPreview}>
             {(() => {
               if ((tabNameCounts.get(tab.name) ?? 0) > 1 && !tab.path.startsWith('Untitled')) {
                 const parts = tab.path.split(/[/\\]/);
@@ -421,7 +473,7 @@
     {:else if activeTab}
       {#if activeTab.language === 'markdown-preview' && MarkdownPreviewComponent}
         <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
-      {:else if activeTab.path.toLowerCase().endsWith('.svg') || activeTab.path.toLowerCase().endsWith('.md') || activeTab.language === 'markdown'}
+      {:else if !activeTab.noPreview && (activeTab.path.toLowerCase().endsWith('.svg') || activeTab.path.toLowerCase().endsWith('.md') || activeTab.language === 'markdown')}
         {@const isMd = activeTab.path.toLowerCase().endsWith('.md') || activeTab.language === 'markdown'}
         {@const viewMode = isMd ? (activeTab.mdViewMode || settingsStore.effectiveSettings.default_md_view || 'preview') : (activeTab.svgViewMode || settingsStore.effectiveSettings.default_svg_view || 'image')}
         
@@ -441,7 +493,7 @@
                   {#if isMd && MarkdownPreviewComponent}
                     <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
                   {:else if !isMd && ImageViewerComponent}
-                    <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} />
+                    <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
                   {/if}
                 </div>
               {:else if viewMode === 'code'}
@@ -462,7 +514,7 @@
                   {:else}
                     <div class="flex-1 flex overflow-hidden relative border-r border-border">
                       {#if ImageViewerComponent}
-                        <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} />
+                        <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
                       {/if}
                     </div>
                     <div class="flex-1 flex overflow-hidden relative [&_.cm-panels-top]:!hidden">
@@ -476,8 +528,17 @@
         {:else}
           <div class="absolute inset-0 bg-canvas"></div>
         {/if}
+      {:else if activeTab.language === 'image-diff' && ImageDiffComponent}
+        <ImageDiffComponent 
+          key={activeTab.id} 
+          filePath={activeTab.path} 
+          originalLabel={activeTab.diffOriginalLabel} 
+          currentLabel={activeTab.diffCurrentLabel} 
+          originalRevision={activeTab.diffOriginalRevision} 
+          currentRevision={activeTab.diffCurrentRevision} 
+        />
       {:else if activeTab.language === 'image' && ImageViewerComponent}
-        <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} />
+        <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
       {:else if activeTab.language === 'welcome' && WelcomeTabComponent}
         <WelcomeTabComponent />
       {:else if activeTab.language === 'settings' && SettingsPageComponent}
@@ -489,15 +550,23 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="opacity-50"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
           <span class="text-sm">Binary or unsupported file encoding.</span>
         </div>
-      {:else if activeTab.content === null && !activeTab.isDiff}
+      {:else if activeTab.content === null}
         <div class="absolute inset-0 bg-canvas"></div>
       {:else if activeTab.isDiff && DiffEditorComponent}
         {#key activeTab.id}
-          <DiffEditorComponent originalContent={activeTab.diffOriginalContent} currentContent={activeTab.content} filePath={activeTab.path} />
+          <DiffEditorComponent
+            originalContent={activeTab.diffOriginalContent}
+            currentContent={activeTab.content}
+            filePath={activeTab.path}
+            originalLabel={activeTab.diffOriginalLabel}
+            currentLabel={activeTab.diffCurrentLabel}
+            editable={activeTab.diffEditable}
+            onCurrentChange={(c: string) => editorStore.updateContent(activeTab.id, c)}
+          />
         {/key}
       {:else if !activeTab.isDiff && EditorComponent}
         {#key activeTab.id}
-          <EditorComponent tabId={activeTab.id} content={activeTab.content} filePath={activeTab.path} />
+          <EditorComponent tabId={activeTab.id} content={activeTab.content} filePath={activeTab.path} readOnly={activeTab.readOnly} />
         {/key}
       {:else}
         <div class="absolute inset-0 bg-canvas"></div>

@@ -1,7 +1,5 @@
 <script lang="ts">
   import { uiStore } from '../../stores/ui';
-  import { editorStore } from '../../stores/editor';
-  import { invoke } from '@tauri-apps/api/core';
   import { open } from '@tauri-apps/plugin-dialog';
   import { exists } from '@tauri-apps/plugin-fs';
 
@@ -27,30 +25,9 @@
     try {
       const selected = await open({ multiple: false });
       if (selected && typeof selected === 'string') {
-        const fileName = selected.split(/[/\\]/).pop() || 'Unknown';
-        let content = '';
-        const isImage = /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(fileName);
-        let isLargeFile = false;
-        let isPreview = false;
-        if (!isImage) {
-          try {
-            content = await invoke<string>('read_file_text', { path: selected });
-          } catch (e) {
-            if (String(e) === '__BINARY__') content = '';
-            else if (String(e) === '__LARGE_FILE__') {
-              const chunked = await invoke<any>('read_file_chunked', { path: selected });
-              content = chunked.content;
-              isLargeFile = true;
-              isPreview = true;
-            } else throw e;
-          }
-        }
-        editorStore.addTab({
-          id: `tab-${Date.now()}`, path: selected, name: fileName, content,
-          language: isImage ? 'image' : await invoke<string>('detect_language', { path: selected }),
-          isPreview,
-          isLargeFile
-        });
+        // Route through the central open handler: the tab opens immediately
+        // and the content streams in from the background.
+        window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: selected } }));
       }
     } catch (err) { console.error(err); }
   }

@@ -7,8 +7,10 @@
   import { undo, redo, selectAll, copyLineUp, copyLineDown, moveLineUp, moveLineDown, historyField } from '@codemirror/commands';
   import { stickyScroll } from '@fazelstudio/codemirror-stickyscroll';
   import { breadcrumbs } from '@fazelstudio/codemirror-breadcrumbs';
+  import { gitGutter, hunksField, baselineContentFacet, gitGutterKeymap } from '@fazelstudio/codemirror-gitgutter';
   import { notronBreadcrumbsTheme, syncBreadcrumbBarIcons, ensureBreadcrumbObserver, disposeBreadcrumbObserver } from '../../editor/breadcrumbs';
   import { COMMON_EXTENSIONS, COMMON_EXTENSIONS_LARGE_FILE } from '../../editor/commonExtensions';
+  import { searchResultHighlightExtensions, setSearchResultHighlight, clearSearchResultHighlight } from '../../editor/searchResultHighlight';
   import { materialIconState } from '../../utils/materialIconRenderer.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
   import HorizontalScrollbar from '../common/HorizontalScrollbar.svelte';
@@ -23,11 +25,11 @@
   import { buildReplaceRegex, applyReplacement } from '../../utils/replace';
   import { uiStore } from '../../stores/ui';
   import { themeStore } from '../../stores/theme';
-  import { gitGutter, hunksField, baselineContentFacet, gitGutterKeymap } from '@fazelstudio/codemirror-gitgutter';
   import { getGitFileContent, stageFile } from '../../services/git';
   import { renderBreadcrumbPathIcon } from '../../utils/breadcrumbPathIcons';
-  
-  let { tabId, content, filePath, children, topRightOverlay, hideContent = false, isHeaderOnly = false }: { tabId: string; content: string; filePath: string; children?: Snippet; topRightOverlay?: Snippet; hideContent?: boolean; isHeaderOnly?: boolean } = $props();
+  import { LARGE_FILE_THRESHOLD_BYTES, SEARCH_RESULT_HIGHLIGHT_MS } from '../../constants';
+
+  let { tabId, content, filePath, children, topRightOverlay, hideContent = false, isHeaderOnly = false, readOnly = false }: { tabId: string; content: string; filePath: string; children?: Snippet; topRightOverlay?: Snippet; hideContent?: boolean; isHeaderOnly?: boolean; readOnly?: boolean } = $props();
 
   let currentTabId: string | null = null;
   const editorStates = new Map<string, EditorState>();
@@ -38,11 +40,13 @@
   let gutterWidth = $state(0);
   let docChangedCount = $state(0);
   let searchWidget = $state<ReturnType<typeof EditorSearchWidget> | null>(null);
-  
+  let searchMode = $state<'find' | 'replace'>('find');
+  let pendingHighlightTimer: ReturnType<typeof setTimeout> | null = null;
+
   const tabsStore = editorStore.tabs;
   let currentTab = $derived($tabsStore.find((t: any) => t.id === tabId));
   let tabStatus = $derived(currentTab?.status);
-  let isLargeFile = $derived(currentTab?.isLargeFile || (content && content.length > 250000));
+  let isLargeFile = $derived(currentTab?.isLargeFile || (content && content.length > LARGE_FILE_THRESHOLD_BYTES));
   
   const foldMarkers = new Set<{ app: any, marker: HTMLElement }>();
 
@@ -147,6 +151,7 @@
   const gutterCompartment = new Compartment();
   const gitGutterCompartment = new Compartment();
   const breadcrumbsCompartment = new Compartment();
+  const readOnlyCompartment = new Compartment();
 
   /** Builds the mini-map extensions, or an empty array when no mini-map is wanted. */
   function minimapExtension(): Extension[] {
@@ -337,6 +342,7 @@
       keymap.of([{
         key: 'Mod-f',
         run: () => {
+          searchMode = 'find';
           uiStore.setFileSearchOpen(true);
           // Wait for DOM to render the widget if it wasn't open
           setTimeout(() => searchWidget?.focusInput(), 10);
@@ -371,6 +377,8 @@
       wordWrapCompartment.of(settings.effectiveSettings.word_wrap ? EditorView.lineWrapping : []),
       tabSizeCompartment.of(EditorState.tabSize.of(settings.effectiveSettings.tab_size)),
       minimapCompartment.of(!isLargeFile && $ui.isMinimapEnabled ? minimapExtension() : []),
+      readOnlyCompartment.of(EditorState.readOnly.of(readOnly)),
+      searchResultHighlightExtensions(),
     ];
 
     let state = editorStates.get(tabId);
@@ -461,6 +469,13 @@
     if (!editorView) return;
     editorView.dispatch({
       effects: tabSizeCompartment.reconfigure(EditorState.tabSize.of(ts))
+    });
+  });
+
+  $effect(() => {
+    if (!editorView) return;
+    editorView.dispatch({
+      effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(readOnly))
     });
   });
 
@@ -664,8 +679,16 @@
     else if (action === 'copyLineDown') copyLineDown(editorView);
     else if (action === 'moveLineUp') moveLineUp(editorView);
     else if (action === 'moveLineDown') moveLineDown(editorView);
-    else if (action === 'find') uiStore.setFileSearchOpen(true);
-    else if (action === 'replace') uiStore.setFileSearchOpen(true);
+    else if (action === 'find') {
+      searchMode = 'find';
+      uiStore.setFileSearchOpen(true);
+      setTimeout(() => searchWidget?.focusInput(), 10);
+    }
+    else if (action === 'replace') {
+      searchMode = 'replace';
+      uiStore.setFileSearchOpen(true);
+      setTimeout(() => searchWidget?.focusReplaceInput(), 10);
+    }
     else if (action === 'replaceAll' && customEvent.detail?.options) {
       // Replace All on the active (live) tab via a single CodeMirror
       // transaction — undoable with Ctrl+Z, and the updateListener keeps
@@ -696,8 +719,15 @@
         const head = Math.min(line.from + endCol - 1, line.to);
         editorView.dispatch({
           selection: { anchor, head },
-          scrollIntoView: true
+          scrollIntoView: true,
+          // Mark the exact matched span and render its label bar in the viewport
+          // so the opened search result stays visible for quick navigation.
+          effects: setSearchResultHighlight.of({ from: anchor, to: head })
         });
+        if (pendingHighlightTimer) clearTimeout(pendingHighlightTimer);
+        pendingHighlightTimer = setTimeout(() => {
+          if (editorView) editorView.dispatch({ effects: clearSearchResultHighlight.of(null) });
+        }, SEARCH_RESULT_HIGHLIGHT_MS);
         editorView.focus();
       }
     }
@@ -714,7 +744,34 @@
     setupEditor();
     window.addEventListener('editor:action', handleAction);
     window.addEventListener('editor:append-chunk', handleAppendChunk);
+    window.addEventListener('editor:sync-content', handleSyncContent);
   });
+
+  /**
+   * External content sync (disk watcher reload, file re-open). Applies a
+   * freshly-read file content to the LIVE CodeMirror buffer without tearing
+   * down the view. The event fires BEFORE the store update (see
+   * editorStore.setInitialContent) so we can compare against the pre-update
+   * baseline: if the buffer has diverged from it, the user is typing inside
+   * the extraction debounce window and we must NOT clobber their edits.
+   */
+  function handleSyncContent(e: any) {
+    if (!editorView) return;
+    const { tabId: tId, content: newContent } = e.detail ?? {};
+    if (tId !== currentTabId || typeof newContent !== 'string') return;
+    if (editorView.state.doc.toString() === newContent) return;
+    const tab = editorStore.getTabsSnapshot().find((t: any) => t.id === currentTabId);
+    if (tab?.isModified) return;
+    // Baseline check: the pre-update doc must still match the tab's baseline
+    // or the new content itself (fresh open) — anything else means in-flight
+    // user edits.
+    if (tab && tab.originalContent !== null
+        && editorView.state.doc.toString() !== tab.originalContent
+        && tab.content !== editorView.state.doc.toString()) return;
+    editorView.dispatch({
+      changes: { from: 0, to: editorView.state.doc.length, insert: newContent }
+    });
+  }
   
   function handleAppendChunk(e: any) {
       if (!editorView) return;
@@ -751,8 +808,14 @@
   });
 
   onDestroy(() => {
+    if (pendingHighlightTimer) {
+      clearTimeout(pendingHighlightTimer);
+      pendingHighlightTimer = null;
+    }
     disposeBreadcrumbObserver();
     window.removeEventListener('editor:action', handleAction);
+    window.removeEventListener('editor:append-chunk', handleAppendChunk);
+    window.removeEventListener('editor:sync-content', handleSyncContent);
     // Instead of just current tab, save history for all tracked states
     if (editorView) {
       if (!isHeaderOnly) {
@@ -916,6 +979,7 @@
       {editorView} 
       onDocChanged={docChangedCount} 
       {rightGap}
+      mode={searchMode}
     />
   {/if}
 </div>

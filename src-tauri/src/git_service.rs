@@ -105,10 +105,33 @@ pub struct GitFileStatus {
 pub struct RepoState {
     /// "Unknown" | "Checking" | "NotARepo" | "Repo"
     pub status: String,
+    /// Current branch name. "(detached)" when HEAD is detached.
     pub branch: Option<String>,
     pub has_upstream: bool,
+    /// Full upstream ref, e.g. "origin/main". Mirrors VSCode's `HEAD.upstream`.
+    #[serde(default)]
+    pub upstream: Option<String>,
+    /// Remote name of the upstream, e.g. "origin".
+    #[serde(default)]
+    pub upstream_remote: Option<String>,
     pub ahead: u32,
     pub behind: u32,
+    /// Short (8-char) HEAD commit hash. `None` when the branch is unborn
+    /// (repo initialized but no commit yet) — VSCode treats this as "no HEAD".
+    #[serde(default)]
+    pub head_short: Option<String>,
+    /// True when the current branch has no commit yet (freshly initialized repo).
+    #[serde(default)]
+    pub unborn: bool,
+    #[serde(default)]
+    pub merge_in_progress: bool,
+    #[serde(default)]
+    pub rebase_in_progress: bool,
+    #[serde(default)]
+    pub cherry_pick_in_progress: bool,
+    /// Names of every configured remote (used for the Publish flow).
+    #[serde(default)]
+    pub remotes: Vec<String>,
     pub staged: Vec<GitFileStatus>,
     pub unstaged: Vec<GitFileStatus>,
     pub untracked: Vec<GitFileStatus>,
@@ -124,8 +147,16 @@ impl RepoState {
             status: "NotARepo".to_string(),
             branch: None,
             has_upstream: false,
+            upstream: None,
+            upstream_remote: None,
             ahead: 0,
             behind: 0,
+            head_short: None,
+            unborn: false,
+            merge_in_progress: false,
+            rebase_in_progress: false,
+            cherry_pick_in_progress: false,
+            remotes: vec![],
             staged: vec![],
             unstaged: vec![],
             untracked: vec![],
@@ -139,8 +170,16 @@ impl RepoState {
             status: "Repo".to_string(),
             branch: None,
             has_upstream: false,
+            upstream: None,
+            upstream_remote: None,
             ahead: 0,
             behind: 0,
+            head_short: None,
+            unborn: false,
+            merge_in_progress: false,
+            rebase_in_progress: false,
+            cherry_pick_in_progress: false,
+            remotes: vec![],
             staged: vec![],
             unstaged: vec![],
             untracked: vec![],
@@ -245,8 +284,11 @@ async fn run_git_raw(
     let res = cmd.output().await;
     let duration = start.elapsed().as_millis();
     if let Some(app) = app {
-        let is_spammy = args.starts_with(&["rev-parse", "--is-inside-work-tree"]) 
-            || args.starts_with(&["config", "--get", "remote.origin.url"]);
+        let is_spammy = args.starts_with(&["rev-parse", "--is-inside-work-tree"])
+            || args.starts_with(&["rev-parse", "--absolute-git-dir"])
+            || args.starts_with(&["remote"])
+            || args.starts_with(&["config", "--get", "remote.origin.url"])
+            || args.starts_with(&["config", "--get", "init.defaultBranch"]);
         
         if !is_spammy {
             let cmd_str = format!("> git {} [{}ms]", args.join(" "), duration);
@@ -780,7 +822,20 @@ pub async fn get_repo_state(
             let head = entry[14..].trim().to_string();
             repo.branch = Some(if head.is_empty() { "(detached)".to_string() } else { head });
         } else if entry.starts_with("# branch.upstream ") {
-            repo.has_upstream = true;
+            let upstream = entry[18..].trim().to_string();
+            repo.has_upstream = !upstream.is_empty();
+            repo.upstream = if upstream.is_empty() { None } else { Some(upstream.clone()) };
+            // remote name is the first path segment, e.g. "origin" in "origin/main"
+            repo.upstream_remote = upstream.split('/').next().filter(|s| !s.is_empty()).map(|s| s.to_string());
+        } else if entry.starts_with("# branch.oid ") {
+            let oid = entry[13..].trim().to_string();
+            // Unborn branch (repo initialized, no commit yet) prints "(initial)".
+            if oid.is_empty() || oid == "(initial)" {
+                repo.head_short = None;
+                repo.unborn = true;
+            } else {
+                repo.head_short = Some(oid.chars().take(8).collect());
+            }
         } else if entry.starts_with("# branch.ab ") {
             let ab = &entry[12..];
             let mut parts = ab.split('-');
@@ -861,6 +916,31 @@ pub async fn get_repo_state(
         }
 
         i += 1;
+    }
+
+    // Unborn branch: no HEAD commit at all (freshly initialized repo).
+    if repo.head_short.is_none() {
+        repo.unborn = true;
+    }
+
+    // Merge / rebase / cherry-pick in progress — VSCode parity: these gate the
+    // commit action and decorate the branch label. The .git dir may live in a
+    // submodule / worktree, so resolve it via git instead of assuming `cwd/.git`.
+    if let Ok(dir_out) = run_git_raw(&git, &["rev-parse", "--absolute-git-dir"], Some(&cwd), Some(&app)).await {
+        if dir_out.status.success() {
+            let git_dir = String::from_utf8_lossy(&dir_out.stdout).trim().trim_end_matches(['/', '\\']).to_string();
+            if !git_dir.is_empty() {
+                let d = Path::new(&git_dir);
+                repo.merge_in_progress = d.join("MERGE_HEAD").exists();
+                repo.rebase_in_progress = d.join("rebase-merge").exists() || d.join("rebase-apply").exists();
+                repo.cherry_pick_in_progress = d.join("CHERRY_PICK_HEAD").exists();
+            }
+        }
+    }
+
+    // Configured remotes (drives the Publish flow when none exists).
+    if let Ok(rem_out) = run_git(&git, &["remote"], &cwd, &state, Some(&app)).await {
+        repo.remotes = rem_out.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
     }
 
     // Folder rollups computed in Rust (cheap, data already in memory).
@@ -1031,7 +1111,25 @@ pub async fn git_cancel_op(op_id: String, state: State<'_, GitState>) -> Result<
 #[tauri::command]
 pub async fn git_init(app: AppHandle, cwd: String, state: State<'_, GitState>) -> Result<(), String> {
     let git = state.git_command().ok_or("Git is not available")?;
-    run_git(&git, &["init"], &cwd, &state, Some(&app)).await.map(|_| ())
+    // VSCode parity: initialize on the user's `init.defaultBranch`, falling
+    // back to "main". Uses `git init -b` when supported, otherwise a plain
+    // init followed by a HEAD symref move (unborn branch).
+    let default_branch = match run_git(&git, &["config", "--get", "init.defaultBranch"], &cwd, &state, Some(&app)).await {
+        Ok(out) => out.trim().to_string(),
+        Err(_) => String::new(),
+    };
+    let default_branch = if default_branch.is_empty() { "main".to_string() } else { default_branch };
+
+    match run_git(&git, &["init", "-b", &default_branch], &cwd, &state, Some(&app)).await {
+        Ok(_) => Ok(()),
+        // git < 2.28 has no `init -b`: init plainly, then point HEAD at the
+        // default branch (safe because the repo is freshly created/unborn).
+        Err(_) => {
+            run_git(&git, &["init"], &cwd, &state, Some(&app)).await?;
+            run_git(&git, &["symbolic-ref", "HEAD", &format!("refs/heads/{}", default_branch)], &cwd, &state, Some(&app)).await?;
+            Ok(())
+        }
+    }
 }
 
 #[tauri::command]
@@ -1081,6 +1179,29 @@ pub async fn git_push(
     run_streaming(&git, &["push", "--progress"], &cwd, "push", &op_id, &progress, &state).await
 }
 
+/// VSCode "Publish Branch": publish the current branch to a remote and set it
+/// as upstream — `git push -u <remote> HEAD`. Picks "origin" when present,
+/// otherwise the first configured remote.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn git_publish(
+    cwd: String,
+    op_id: Option<String>,
+    progress: tauri::ipc::Channel<GitProgress>,
+    state: State<'_, GitState>,
+) -> Result<(), String> {
+    let git = state.git_command().ok_or("Git is not available")?;
+    let remotes = run_git(&git, &["remote"], &cwd, &state, None).await.unwrap_or_default();
+    let names: Vec<String> = remotes.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    // VSCode prioritizes "origin" and falls back to the first configured remote.
+    let remote = names.iter().find(|r| *r == "origin").or_else(|| names.first());
+    let Some(remote) = remote else {
+        return Err("Your repository has no remotes configured to publish to.".to_string());
+    };
+    let op_id = op_id.unwrap_or_else(|| format!("publish-{}", now_ms()));
+    run_streaming(&git, &["push", "--progress", "-u", remote, "HEAD"], &cwd, "publish", &op_id, &progress, &state).await
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn git_pull(
@@ -1104,7 +1225,7 @@ pub async fn git_fetch(
 ) -> Result<(), String> {
     let git = state.git_command().ok_or("Git is not available")?;
     let op_id = op_id.unwrap_or_else(|| format!("fetch-{}", now_ms()));
-    run_streaming(&git, &["fetch", "--progress"], &cwd, "fetch", &op_id, &progress, &state).await
+    run_streaming(&git, &["fetch", "--all", "--prune", "--progress"], &cwd, "fetch", &op_id, &progress, &state).await
 }
 
 /// Clone a repository into `dest`. `git clone` creates the destination folder,
@@ -1140,13 +1261,28 @@ pub struct GitLogEntry {
     pub email: String,
     pub date: String,
     pub refs: String,
+    /// Parent hashes (space-separated from `%P`). Empty for the root commit.
+    pub parents: String,
     pub stats: String,
+}
+
+/// `git show <rev>:<path>` needs a path RELATIVE to the repo root, but callers
+/// (ImageViewer, ImageDiff) pass the absolute disk path. Strip the cwd prefix so
+/// revision lookups work with either form.
+fn repo_relative_path(cwd: &str, path: &str) -> String {
+    let p = path.replace('\\', "/");
+    let cwd_norm = cwd.replace('\\', "/");
+    let base = cwd_norm.trim_end_matches('/');
+    match p.strip_prefix(&format!("{}/", base)) {
+        Some(rel) => rel.to_string(),
+        None => p,
+    }
 }
 
 #[tauri::command]
 pub async fn git_file_diff(app: AppHandle, cwd: String, path: String, state: State<'_, GitState>) -> Result<String, String> {
     let git = state.git_command().ok_or("Git is not available")?;
-    let rel_path = path.replace("\\", "/");
+    let rel_path = repo_relative_path(&cwd, &path);
     // Show diff against HEAD to include both staged and unstaged changes for the gutter
     run_git(&git, &["diff", "-U0", "HEAD", "--", &rel_path], &cwd, &state, Some(&app)).await
 }
@@ -1154,9 +1290,26 @@ pub async fn git_file_diff(app: AppHandle, cwd: String, path: String, state: Sta
 #[tauri::command]
 pub async fn get_git_file_content(app: AppHandle, cwd: String, path: String, revision: String, state: State<'_, GitState>) -> Result<String, String> {
     let git = state.git_command().ok_or("Git is not available")?;
-    let rel_path = path.replace("\\", "/");
+    let rel_path = repo_relative_path(&cwd, &path);
     let target = format!("{}:{}", revision, rel_path);
     run_git(&git, &["show", &target], &cwd, &state, Some(&app)).await
+}
+
+#[tauri::command]
+pub async fn get_git_file_binary(app: AppHandle, cwd: String, path: String, revision: String, state: State<'_, GitState>) -> Result<Vec<u8>, String> {
+    let git = state.git_command().ok_or("Git is not available")?;
+    let rel_path = repo_relative_path(&cwd, &path);
+    let target = format!("{}:{}", revision, rel_path);
+    match run_git_raw(&git, &["show", &target], Some(&cwd), Some(&app)).await {
+        Ok(out) if out.status.success() => Ok(out.stdout),
+        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                state.invalidate();
+            }
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
@@ -1200,7 +1353,7 @@ pub async fn get_commit_files(app: AppHandle, cwd: String, hash: String, state: 
 pub async fn git_log(app: AppHandle, cwd: String, limit: Option<u32>, offset: Option<u32>, state: State<'_, GitState>) -> Result<Vec<GitLogEntry>, String> {
     let git = state.git_command().ok_or("Git is not available")?;
     let limit_str = limit.unwrap_or(50).to_string();
-    let mut args: Vec<&str> = vec!["log", "--shortstat", "--pretty=format:<C>%h%x00%s%x00%an%x00%ae%x00%at%x00%D", "-n", &limit_str];
+    let mut args: Vec<&str> = vec!["log", "--shortstat", "--pretty=format:<C>%h%x00%s%x00%an%x00%ae%x00%at%x00%D%x00%P", "-n", &limit_str];
     let skip_str;
     if let Some(skip) = offset.filter(|s| *s > 0) {
         skip_str = skip.to_string();
@@ -1221,7 +1374,7 @@ pub async fn git_log(app: AppHandle, cwd: String, limit: Option<u32>, offset: Op
         let stats_line = lines.next().unwrap_or("").trim();
         
         let parts: Vec<&str> = header.split('\0').collect();
-        if parts.len() >= 5 {
+        if parts.len() >= 6 {
             entries.push(GitLogEntry {
                 hash: parts[0].to_string(),
                 message: parts[1].to_string(),
@@ -1229,6 +1382,7 @@ pub async fn git_log(app: AppHandle, cwd: String, limit: Option<u32>, offset: Op
                 email: parts[3].to_string(),
                 date: parts[4].to_string(),
                 refs: parts.get(5).unwrap_or(&"").to_string(),
+                parents: parts.get(6).unwrap_or(&"").to_string(),
                 stats: stats_line.to_string(),
             });
         }

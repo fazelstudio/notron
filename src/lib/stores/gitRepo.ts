@@ -12,6 +12,7 @@ import {
   commit,
   discardFile,
   runNetworkOp,
+  publishBranch,
   cancelOp,
   UNKNOWN_AVAILABILITY,
   type GitAvailability,
@@ -233,6 +234,11 @@ function createGitRepoStore() {
       if (_cwd) await refreshRepo(_cwd);
     },
 
+    /** Refresh only the GRAPH (git log) — changes stay untouched. */
+    refreshGraph: async () => {
+      if (_cwd) await refreshCommits(_cwd);
+    },
+
     async initRepo() {
       if (!_cwd) return;
       try {
@@ -316,6 +322,30 @@ function createGitRepoStore() {
       patch({ syncing: true, syncingOp: opId, progress: null, lastError: null });
       try {
         const handle = runNetworkOp(command, _cwd, opId, (progress) => {
+          patch({ progress });
+        });
+        await handle.promise;
+        _opId = null;
+        patch({ syncing: false, syncingOp: null, progress: null });
+        await refreshRepo(_cwd);
+        await refreshCommits(_cwd);
+        return true;
+      } catch (e) {
+        _opId = null;
+        patch({ syncing: false, syncingOp: null, progress: null, lastError: String(e) });
+        return false;
+      }
+    },
+
+    /** VSCode "Publish Branch": push the current branch to a remote and set
+     *  its upstream, with real progress + cancel. Resolves when done. */
+    async publish() {
+      if (!_cwd) return false;
+      const opId = `publish-${Date.now()}`;
+      _opId = opId;
+      patch({ syncing: true, syncingOp: opId, progress: null, lastError: null });
+      try {
+        const handle = publishBranch(_cwd, opId, (progress) => {
           patch({ progress });
         });
         await handle.promise;

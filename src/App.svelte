@@ -18,7 +18,6 @@
   import TrustModal from './lib/components/panels/TrustModal.svelte';
   import RecentFoldersModal from './lib/components/panels/RecentFoldersModal.svelte';
   import BottomPanel from './lib/components/panels/BottomPanel.svelte';
-  import SmartSearchModal from './lib/components/panels/SmartSearchModal.svelte';
   import ToastContainer from './lib/components/common/ToastContainer.svelte';
 
   import SplitView from './lib/components/editor/SplitView.svelte';
@@ -27,7 +26,18 @@
   import { navigationStore } from './lib/stores/navigation';
   import { gitDecorationStore } from './lib/stores/gitDecoration';
   import { gitRepoStore } from './lib/stores/gitRepo';
+  import { sourceControlStore } from './lib/stores/sourceControl';
   import { splitStore } from './lib/stores/split';
+  import {
+    UNTITLED_PREFIX,
+    UNKNOWN_NAME,
+    IMAGE_EXT_RE,
+    BINARY_SENTINEL,
+    LARGE_FILE_SENTINEL,
+    LARGE_FILE_THRESHOLD_BYTES,
+    generateId,
+  } from './lib/constants';
+  import { formatLanguageName } from './lib/utils/languageDetector';
   import { onMount } from 'svelte';
 
   const tabs = editorStore.tabs;
@@ -63,10 +73,10 @@
   let RunPanelComponent = $state<any>(null);
   let MarkdownPreviewComponent = $state<any>(null);
   let ImageViewerComponent = $state<any>(null);
+  let ImageDiffComponent = $state<any>(null);
   let EditorComponent = $state<any>(null);
   let DiffEditorComponent = $state<any>(null);
 
-  let showSmartSearchModal = $state(false);
   let activeTab = $derived($tabs.find((t: any) => t.id === $activeTabId) || null);
   let isDark = $derived($themeStore.isDark);
 
@@ -193,6 +203,32 @@
     }
   });
 
+  let gotoRetryTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Dispatch a goto/highlight action that retries until the target line is
+  // loaded. Files stream in chunks (large files), so the line may not exist in
+  // the editor's document yet on the first attempt — re-sending until the
+  // editor can actually apply it (Editor ignores lines beyond EOF) makes the
+  // jump land reliably instead of being dropped on a still-loading tab.
+  function dispatchGotoWithRetry(line: number, column?: number, endColumn?: number) {
+    const fire = () => {
+      window.dispatchEvent(new CustomEvent('editor:action', {
+        detail: { action: 'goto', line, column, endColumn }
+      }));
+    };
+    fire();
+    if (gotoRetryTimer) clearInterval(gotoRetryTimer);
+    let attempts = 0;
+    gotoRetryTimer = setInterval(() => {
+      if (++attempts >= 30) {
+        clearInterval(gotoRetryTimer!);
+        gotoRetryTimer = null;
+        return;
+      }
+      fire();
+    }, 100);
+  }
+
   onMount(() => {
     const switchHandler = async (e: Event) => {
       const path = (e as CustomEvent).detail?.path;
@@ -211,9 +247,7 @@
       if (path) {
         await openFileInActivePane(path);
         if (line) {
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('editor:action', { detail: { action: 'goto', line } }));
-          }, 50);
+          dispatchGotoWithRetry(line, detail?.column, detail?.endColumn);
         }
       }
     });
@@ -228,33 +262,34 @@
       }
     });
     window.addEventListener('split:request-close-tab', (e: Event) => {
-      const { tabId, paneId } = (e as CustomEvent).detail;
+      const { tabId } = (e as CustomEvent).detail;
       const tab = editorStore.getTabsSnapshot().find((t: any) => t.id === tabId);
       if (!tab) return;
-      if (tab.isModified || (tab.path.startsWith('Untitled') && tab.content && tab.content.trim() !== '')) {
+      if (tab.isModified || (tab.path.startsWith(UNTITLED_PREFIX) && tab.content && tab.content.trim() !== '')) {
         closingTabId = tabId;
       } else {
-        splitStore.closeTabInPane(paneId, tabId);
-        editorStore.closeTab(tabId);
+        editorStore.closeTabEverywhere(tabId);
       }
     });
-
-    const openSmartSearchHandler = () => showSmartSearchModal = true;
-    window.addEventListener('open-smart-search', openSmartSearchHandler);
 
     const focusHandler = async () => {
       if (!appReady) return;
       gitRepoStore.refreshRepoOnly();
       const currentTabs = editorStore.getTabsSnapshot();
-      const paths = currentTabs.filter((t: any) => !t.path.startsWith('Untitled') && t.status !== 'deleted').map((t: any) => t.path);
+      
+      // Only stat-check physical disk files (tab.id === tab.path)
+      // This prevents virtual/git tabs (e.g. C:\file::working-tree:D) from being erroneously marked as deleted
+      const diskTabs = currentTabs.filter((t: any) => t.id === t.path && !t.path.startsWith('Untitled') && t.status !== 'deleted');
+      const paths = diskTabs.map((t: any) => t.path);
+      
       if (paths.length === 0) return;
       
       try {
         const metadata = await invoke<any[]>('get_files_metadata', { paths });
         const existingPaths = new Set(metadata.map(m => m.path));
         
-        currentTabs.forEach((tab: any) => {
-          if (!tab.path.startsWith('Untitled') && tab.status !== 'deleted' && !existingPaths.has(tab.path)) {
+        diskTabs.forEach((tab: any) => {
+          if (!existingPaths.has(tab.path)) {
             editorStore.markTabDeleted(tab.id);
           }
         });
@@ -264,7 +299,6 @@
 
     return () => {
       window.removeEventListener('request-workspace-switch', switchHandler);
-      window.removeEventListener('open-smart-search', openSmartSearchHandler);
       window.removeEventListener('focus', focusHandler);
     };
   });
@@ -327,6 +361,17 @@
               isPreview: t.isPreview, isPinned: t.isPinned,
               isModified: t.isModified,
               content: t.isModified ? t.content : undefined,
+              isDiff: t.isDiff,
+              readOnly: t.readOnly,
+              noPreview: t.noPreview,
+              isUnsupported: t.isUnsupported,
+              gitRevision: t.gitRevision,
+              diffEditable: t.diffEditable,
+              diffOriginalLabel: t.diffOriginalLabel,
+              diffCurrentLabel: t.diffCurrentLabel,
+              diffOriginalRevision: t.diffOriginalRevision,
+              diffCurrentRevision: t.diffCurrentRevision,
+              diffOriginalContent: t.diffOriginalContent,
             }))
           }
         ]))
@@ -354,6 +399,17 @@
           content: t.isModified ? t.content : undefined,
           svgViewMode: t.svgViewMode,
           mdViewMode: t.mdViewMode,
+          isDiff: t.isDiff,
+          readOnly: t.readOnly,
+          noPreview: t.noPreview,
+          isUnsupported: t.isUnsupported,
+          gitRevision: t.gitRevision,
+          diffEditable: t.diffEditable,
+          diffOriginalLabel: t.diffOriginalLabel,
+          diffCurrentLabel: t.diffCurrentLabel,
+          diffOriginalRevision: t.diffOriginalRevision,
+          diffCurrentRevision: t.diffCurrentRevision,
+          diffOriginalContent: t.diffOriginalContent,
         })),
         activeTabId,
         splitState: sanitizedSplitState,
@@ -457,6 +513,88 @@
   // Section 1.2: Shell-First Rendering + Tiered State Loading
   // Section 1.4 + 6.1: IPC Batching — all startup queries in ONE round-trip
   // ============================================================
+  /** Apply a parsed workspace session to the stores. Shared by the initial
+   *  startup and workspace-switch paths so both restore the SAME state
+   *  (layout, terminal, tabs, split panes, cursor/scroll) — previously the
+   *  switch path forgot the split panes, leaving stale tabs on screen. */
+  function applySessionState(parsed: any, stateMap: Map<string, string>) {
+    // Start from a clean single pane — on a workspace switch the old split
+    // layout must not leak into the new workspace.
+    splitStore.resetToSinglePane();
+
+    // Apply layout overrides from session
+    if (parsed.sidebarWidth !== undefined) uiStore.setSidebarWidth(parsed.sidebarWidth);
+    if (parsed.isSidebarOpen !== undefined) uiStore.setSidebarOpen(parsed.isSidebarOpen);
+    if (parsed.expandedPaths !== undefined) uiStore.setExpandedPaths(parsed.expandedPaths);
+    if (parsed.activeSidebarPanel !== undefined) uiStore.setActiveSidebarPanel(parsed.activeSidebarPanel);
+    if (parsed.isMinimapEnabled !== undefined) uiStore.setMinimapEnabled(parsed.isMinimapEnabled);
+    if (parsed.searchQuery !== undefined) uiStore.setSearchQuery(parsed.searchQuery);
+    if (parsed.replaceQuery !== undefined) uiStore.setReplaceQuery(parsed.replaceQuery);
+
+    // Apply terminal state
+    terminalStore.setTerminals(parsed.terminals || [], parsed.activeTerminalId || null);
+    if (parsed.terminalMaximized !== undefined) terminalStore.setMaximize(parsed.terminalMaximized);
+    if (parsed.terminalHeight !== undefined) terminalStore.setHeight(parsed.terminalHeight);
+    if (parsed.terminalActivePanel !== undefined) terminalStore.setActivePanel(parsed.terminalActivePanel);
+    if (parsed.terminalVisible !== undefined) terminalStore.setVisibility(parsed.terminalVisible);
+    if (parsed.sourceControlState !== undefined) sourceControlStore.hydrate(parsed.sourceControlState);
+
+    // Lazy Tab Initialization
+    let lazyTabs: any[] = [];
+    if (parsed.tabs && parsed.tabs.length > 0) {
+      lazyTabs = parsed.tabs.map((t: any) => ({
+        ...t,
+        content: t.isModified && t.content !== undefined ? t.content : null,
+        originalContent: null,
+        lastAccessed: Date.now(),
+        status: t.isModified && t.content !== undefined ? 'modified' : 'loaded',
+      }));
+      editorStore.setTabs(lazyTabs, parsed.activeTabId || null);
+    } else {
+      editorStore.setTabs([], null);
+    }
+
+    if (parsed.splitState) {
+      const loadedSplit = parsed.splitState;
+      const newPanes = Object.fromEntries(
+        Object.entries(loadedSplit.panes).map(([paneId, p]: [string, any]) => {
+          return [paneId, {
+            ...p,
+            tabs: p.tabs.map((t: any) => lazyTabs.find(lt => lt.id === t.id) || t)
+          }];
+        })
+      );
+      splitStore.setState({ ...loadedSplit, panes: newPanes });
+    } else if (lazyTabs.length > 0) {
+      // Migration from older flat session
+      const snap = splitStore.getSnapshot();
+      const paneId = snap.activePaneId;
+      const pane = snap.panes[paneId];
+      splitStore.setState({
+        ...snap,
+        panes: {
+          [paneId]: {
+            ...pane,
+            tabs: lazyTabs,
+            activeTabId: parsed.activeTabId || null
+          }
+        }
+      });
+    }
+
+    // Restore cursor/scroll positions
+    const cursorStr = stateMap.get('cursor_scroll');
+    if (cursorStr) {
+      try {
+        const cursorData = JSON.parse(cursorStr);
+        for (const item of cursorData) {
+          if (item.cursor) editorStore.updateCursor(item.id, item.cursor.line, item.cursor.column);
+          if (item.scroll) editorStore.updateScroll(item.id, item.scroll.top, item.scroll.left);
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
   async function stagedStartup() {
     // Phase 0: Shell renders immediately (appReady=false shows skeleton)
     // Theme + dimensions already loaded from localStorage (sync)
@@ -509,82 +647,13 @@
         if (sessionStr) {
           try {
             const parsed = JSON.parse(sessionStr);
-            // Apply layout overrides from session
-            if (parsed.sidebarWidth !== undefined) uiStore.setSidebarWidth(parsed.sidebarWidth);
-            if (parsed.isSidebarOpen !== undefined) uiStore.setSidebarOpen(parsed.isSidebarOpen);
-            if (parsed.expandedPaths !== undefined) uiStore.setExpandedPaths(parsed.expandedPaths);
-            if (parsed.activeSidebarPanel !== undefined) uiStore.setActiveSidebarPanel(parsed.activeSidebarPanel);
-            if (parsed.isMinimapEnabled !== undefined) uiStore.setMinimapEnabled(parsed.isMinimapEnabled);
-            if (parsed.searchQuery !== undefined) uiStore.setSearchQuery(parsed.searchQuery);
-            if (parsed.replaceQuery !== undefined) uiStore.setReplaceQuery(parsed.replaceQuery);
-            
-            // Apply terminal state
-            terminalStore.setTerminals(parsed.terminals || [], parsed.activeTerminalId || null);
-            if (parsed.terminalMaximized !== undefined) terminalStore.setMaximize(parsed.terminalMaximized);
-            if (parsed.terminalHeight !== undefined) terminalStore.setHeight(parsed.terminalHeight);
-            if (parsed.terminalActivePanel !== undefined) terminalStore.setActivePanel(parsed.terminalActivePanel);
-            if (parsed.terminalVisible !== undefined) terminalStore.setVisibility(parsed.terminalVisible);
-
-            // Phase 3: Lazy Tab Initialization
-            let lazyTabs: any[] = [];
-            if (parsed.tabs && parsed.tabs.length > 0) {
-              lazyTabs = parsed.tabs.map((t: any) => ({
-                ...t,
-                content: t.isModified && t.content !== undefined ? t.content : null,
-                originalContent: null,
-                lastAccessed: Date.now(),
-                status: t.isModified && t.content !== undefined ? 'modified' : 'loaded',
-              }));
-              editorStore.setTabs(lazyTabs, parsed.activeTabId || null);
-            } else {
-              editorStore.setTabs([], null);
-            }
-
-            if (parsed.splitState) {
-              const loadedSplit = parsed.splitState;
-              const newPanes = Object.fromEntries(
-                Object.entries(loadedSplit.panes).map(([paneId, p]: [string, any]) => {
-                  return [paneId, {
-                    ...p,
-                    tabs: p.tabs.map((t: any) => lazyTabs.find(lt => lt.id === t.id) || t)
-                  }];
-                })
-              );
-              splitStore.setState({ ...loadedSplit, panes: newPanes });
-            } else if (lazyTabs.length > 0) {
-              // Migration from older flat session
-              const snap = splitStore.getSnapshot();
-              const paneId = snap.activePaneId;
-              const pane = snap.panes[paneId];
-              splitStore.setState({
-                ...snap,
-                panes: {
-                  [paneId]: {
-                    ...pane,
-                    tabs: lazyTabs,
-                    activeTabId: parsed.activeTabId || null
-                  }
-                }
-              });
-            }
+            applySessionState(parsed, stateMap);
           } catch (e) {
             console.error('Failed to parse session state', e);
             editorStore.setTabs([], null);
           }
         } else {
           editorStore.setTabs([], null);
-        }
-
-        // Restore cursor/scroll positions
-        const cursorStr = stateMap.get('cursor_scroll');
-        if (cursorStr) {
-          try {
-            const cursorData = JSON.parse(cursorStr);
-            for (const item of cursorData) {
-              if (item.cursor) editorStore.updateCursor(item.id, item.cursor.line, item.cursor.column);
-              if (item.scroll) editorStore.updateScroll(item.id, item.scroll.top, item.scroll.left);
-            }
-          } catch { /* ignore */ }
         }
       } else {
         editorStore.setTabs([], null);
@@ -754,49 +823,13 @@
         if (sessionStr) {
           try {
             const parsed = JSON.parse(sessionStr);
-            if (parsed.sidebarWidth !== undefined) uiStore.setSidebarWidth(parsed.sidebarWidth);
-            if (parsed.isSidebarOpen !== undefined) uiStore.setSidebarOpen(parsed.isSidebarOpen);
-            if (parsed.expandedPaths !== undefined) uiStore.setExpandedPaths(parsed.expandedPaths);
-            if (parsed.activeSidebarPanel !== undefined) uiStore.setActiveSidebarPanel(parsed.activeSidebarPanel);
-            if (parsed.isMinimapEnabled !== undefined) uiStore.setMinimapEnabled(parsed.isMinimapEnabled);
-            if (parsed.searchQuery !== undefined) uiStore.setSearchQuery(parsed.searchQuery);
-            if (parsed.replaceQuery !== undefined) uiStore.setReplaceQuery(parsed.replaceQuery);
-
-            terminalStore.setTerminals(parsed.terminals || [], parsed.activeTerminalId || null);
-            if (parsed.terminalMaximized !== undefined) terminalStore.setMaximize(parsed.terminalMaximized);
-            if (parsed.terminalHeight !== undefined) terminalStore.setHeight(parsed.terminalHeight);
-            if (parsed.terminalActivePanel !== undefined) terminalStore.setActivePanel(parsed.terminalActivePanel);
-            if (parsed.terminalVisible !== undefined) terminalStore.setVisibility(parsed.terminalVisible);
-
-            if (parsed.tabs !== undefined) {
-              const lazyTabs = parsed.tabs.map((t: any) => ({
-                ...t,
-                content: t.isModified && t.content !== undefined ? t.content : null,
-                originalContent: null,
-                lastAccessed: Date.now(),
-                status: t.isModified && t.content !== undefined ? 'modified' : 'loaded',
-              }));
-              editorStore.setTabs(lazyTabs, parsed.activeTabId || null);
-            } else {
-              editorStore.setTabs([], null);
-            }
+            applySessionState(parsed, stateMap);
           } catch (e) {
             console.error('Failed to parse session state', e);
             editorStore.setTabs([], null);
           }
         } else {
           editorStore.setTabs([], null);
-        }
-        
-        const cursorStr = stateMap.get('cursor_scroll');
-        if (cursorStr) {
-          try {
-            const cursorData = JSON.parse(cursorStr);
-            for (const item of cursorData) {
-              if (item.cursor) editorStore.updateCursor(item.id, item.cursor.line, item.cursor.column);
-              if (item.scroll) editorStore.updateScroll(item.id, item.scroll.top, item.scroll.left);
-            }
-          } catch { /* ignore */ }
         }
       } else {
         editorStore.setTabs([], null);
@@ -811,67 +844,30 @@
 
 
 
-  // Guard set to prevent the $effect from re-triggering itself when setTabLoading updates the store
-  const loadingTabIds = new Set<string>();
+  // Content is loaded centrally: new opens go through `openFileInActivePane`
+  // (tab first, content streamed in), and suspended/session-restored tabs are
+  // re-read by SplitEditorPane's per-pane effect (which syncs the loaded
+  // content back into the split store). No global lazy-load effect here —
+  // a second one would race the per-pane loader with duplicate IPC reads.
 
-  // Lazy load content when active tab changes and content is null
   $effect(() => {
-    if (
-      activeTab &&
-      activeTab.content === null &&
-      activeTab.path &&
-      !activeTab.path.startsWith('Untitled') &&
-      !activeTab.isLargeFile &&
-      !loadingTabIds.has(activeTab.id)
-    ) {
-      const tabId = activeTab.id;
-      const path = activeTab.path;
-      loadingTabIds.add(tabId);
-      editorStore.setTabLoading(tabId, true);
-      invoke<string>('read_file_text', { path }).then(content => {
-        editorStore.setInitialContent(tabId, content);
-      }).catch(async err => {
-        if (String(err) === '__BINARY__') {
-          editorStore.setTabUnsupported(tabId, true);
-          editorStore.setInitialContent(tabId, '');
-        } else if (String(err) === '__LARGE_FILE__') {
-          try {
-            const { Channel } = await import('@tauri-apps/api/core');
-            const channel = new Channel<{ chunk: string; done: boolean }>();
-            let firstChunk = true;
-            channel.onmessage = (message) => {
-               if (message.done) {
-                  editorStore.updateTab(tabId, { isLoading: false });
-                  return;
-               }
-               if (firstChunk) {
-                   editorStore.setInitialContent(tabId, message.chunk);
-                   editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
-                   firstChunk = false;
-               } else {
-                   window.dispatchEvent(new CustomEvent('editor:append-chunk', {
-                       detail: { tabId, chunk: message.chunk }
-                   }));
-               }
-            };
-            await invoke('read_file_stream', { path, channel });
-          } catch(e) { console.error(e); }
-        } else {
-          console.error("Failed to lazy load tab content:", err);
-        }
-      }).finally(() => {
-        editorStore.setTabLoading(tabId, false);
-        loadingTabIds.delete(tabId);
-      });
+    if ((activeTab?.language === 'image' || activeTab?.path.toLowerCase().endsWith('.svg')) && !ImageViewerComponent) {
+      import('./lib/components/editor/ImageViewer.svelte').then(m => ImageViewerComponent = m.default);
+    }
+  });
+
+  $effect(() => {
+    if (activeTab?.language === 'image-diff' && !ImageDiffComponent) {
+      import('./lib/components/editor/ImageDiff.svelte').then(m => ImageDiffComponent = m.default);
     }
   });
 
   // Trigger EditorComponent lazy load as soon as a non-special tab exists (even with null content)
   $effect(() => {
-    if (activeTab && activeTab.language !== 'markdown-preview' && activeTab.language !== 'image' && activeTab.language !== 'welcome' && !EditorComponent && !activeTab.isDiff) {
+    if (activeTab && activeTab.language !== 'markdown-preview' && activeTab.language !== 'image' && activeTab.language !== 'image-diff' && activeTab.language !== 'welcome' && !EditorComponent && !activeTab.isDiff) {
       import('./lib/components/editor/Editor.svelte').then(m => EditorComponent = m.default);
     }
-    if (activeTab && activeTab.isDiff && !DiffEditorComponent) {
+    if (activeTab && activeTab.isDiff && activeTab.language !== 'image-diff' && !DiffEditorComponent) {
       import('./lib/components/editor/DiffEditor.svelte').then(m => DiffEditorComponent = m.default);
     }
   });
@@ -896,7 +892,11 @@
     }
   }
 
-  /** Open a file and add it to the active split pane */
+  /** Open a file and add it to the active split pane. VSCode-style: the tab
+   *  opens immediately (no "Loading" placeholder — the editor stays blank)
+   *  and content streams in from the background once the disk read finishes.
+   *  This is the SINGLE entry point for every file-open path (explorer,
+   *  palette, welcome, menu bar, search results). */
   async function openFileInActivePane(filePath: string) {
     const splitSnap = splitStore.getSnapshot();
     const activePaneId = splitSnap.activePaneId;
@@ -911,54 +911,94 @@
       }
     }
 
-    const fileName = filePath.split(/[/\\]/).pop() || 'Unknown';
-    let content: string | null = null;
-    const isImage = /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(fileName);
-    let isLargeFile = false;
-    let isPreview = false;
-    if (!isImage) {
-      try {
-        content = await invoke<string>('read_file_text', { path: filePath });
-      } catch (e) {
-        if (String(e) === '__BINARY__') content = '';
-        else if (String(e) === '__LARGE_FILE__') {
-          const chunked = await invoke<any>('read_file_chunked', { path: filePath });
-          content = chunked.content;
-          isLargeFile = true;
-          isPreview = true;
-        } else throw e;
-      }
-    }
-    const language = isImage ? 'image' : await invoke<string>('detect_language', { path: filePath }).catch(() => 'plaintext');
-    const id = `tab-${Date.now()}`;
-    const tab = { id, path: filePath, name: fileName, content, language, isPreview, isLargeFile };
-    
-    let tabToReplaceId = null;
-    const currentSplitSnap = splitStore.getSnapshot();
-    const currentActivePaneId = currentSplitSnap.activePaneId || activePaneId;
-    const currentPane = currentActivePaneId ? currentSplitSnap.panes[currentActivePaneId] : null;
+    const fileName = filePath.split(/[/\\]/).pop() || UNKNOWN_NAME;
+    const isImage = IMAGE_EXT_RE.test(fileName);
+    const id = generateId('tab');
 
+    // Preview-replacement target is decided synchronously (before any await)
+    // so the tab can mount before the first IPC round-trip completes.
+    let tabToReplaceId: string | null = null;
+    const currentPane = activePaneId ? splitSnap.panes[activePaneId] : null;
     if (currentPane && currentPane.activeTabId) {
-      const activeTab = currentPane.tabs.find((t: any) => t.id === currentPane.activeTabId);
+      const activeTabObj = currentPane.tabs.find((t: any) => t.id === currentPane.activeTabId);
       // Replace if not modified. For 'Untitled', also ensure it doesn't have content.
-      if (activeTab && !activeTab.isModified) {
-        const isUntitledWithContent = activeTab.path.startsWith('Untitled') && activeTab.content && activeTab.content.trim() !== '';
+      if (activeTabObj && !activeTabObj.isModified) {
+        const isUntitledWithContent = activeTabObj.path.startsWith(UNTITLED_PREFIX)
+          && activeTabObj.content && activeTabObj.content.trim() !== '';
         if (!isUntitledWithContent) {
-          tabToReplaceId = activeTab.id;
+          tabToReplaceId = activeTabObj.id;
         }
       }
     }
 
-    if (tabToReplaceId && currentActivePaneId) {
-      editorStore.closeTab(tabToReplaceId);
-      editorStore.addTab(tab);
-      editorStore.setActiveTab(id);
-      splitStore.replaceTabInPane(activePaneId, tabToReplaceId, { ...tab, originalContent: content, isModified: false, lastAccessed: Date.now(), status: content !== null ? 'active' : 'loaded' });
-    } else {
-      editorStore.addTab(tab);
-      editorStore.setActiveTab(id);
-      if (currentActivePaneId) {
-        splitStore.addTabToPane(currentActivePaneId, { ...tab, originalContent: content, isModified: false, lastAccessed: Date.now(), status: content !== null ? 'active' : 'loaded' });
+    const tab = {
+      id,
+      path: filePath,
+      name: fileName,
+      content: null as string | null,
+      language: isImage ? 'image' : 'plaintext',
+      isPreview: tabToReplaceId !== null,
+      isLargeFile: false,
+      // Marks that App itself drives the load — prevents the pane focus
+      // effect from firing a duplicate read for the same tab.
+      isLoading: !isImage,
+    };
+
+    if (tabToReplaceId) editorStore.closeTabEverywhere(tabToReplaceId);
+    editorStore.addTab(tab);
+    editorStore.setActiveTab(id);
+    if (activePaneId) {
+      if (tabToReplaceId) {
+        splitStore.replaceTabInPane(activePaneId, tabToReplaceId, {
+          ...tab,
+          originalContent: null,
+          isModified: false,
+          lastAccessed: Date.now(),
+          status: 'loaded',
+        });
+      } else {
+        splitStore.addTabToPane(activePaneId, {
+          ...tab,
+          originalContent: null,
+          isModified: false,
+          lastAccessed: Date.now(),
+          status: 'loaded',
+        });
+      }
+    }
+
+    if (isImage) return;
+
+    // Background load: language first (for syntax highlighting), then content.
+    const language = await invoke<string>('detect_language', { path: filePath }).catch(() => 'plaintext');
+    editorStore.updateTab(id, { language });
+    splitStore.updateTabInAllPanes({ id, language });
+
+    try {
+      const content = await invoke<string>('read_file_text', { path: filePath });
+      editorStore.setInitialContent(id, content);
+      editorStore.setTabLoading(id, false);
+      splitStore.updateTabInAllPanes(editorStore.getTabsSnapshot().find((t: any) => t.id === id) || { id });
+    } catch (e) {
+      if (String(e) === BINARY_SENTINEL) {
+        editorStore.setTabUnsupported(id, true);
+        editorStore.setInitialContent(id, '');
+        editorStore.setTabLoading(id, false);
+        splitStore.updateTabInAllPanes({ id, isUnsupported: true, isLoading: false });
+      } else if (String(e) === LARGE_FILE_SENTINEL) {
+        try {
+          const chunked = await invoke<any>('read_file_chunked', { path: filePath });
+          editorStore.setInitialContent(id, chunked.content);
+          editorStore.updateTab(id, { isLargeFile: true, isPreview: true });
+          editorStore.setTabLoading(id, false);
+          splitStore.updateTabInAllPanes({ id, isLargeFile: true, isPreview: true });
+        } catch (err) {
+          console.error('Failed to open large file:', err);
+          editorStore.setTabLoading(id, false);
+        }
+      } else {
+        console.error('Failed to open file:', e);
+        editorStore.setTabLoading(id, false);
       }
     }
   }
@@ -983,9 +1023,7 @@
   let paletteLoadedFor = $state<string | null>(null);
 
   function openFileFromPalette(path: string) {
-    const name = path.split(/[/\\]/).pop() || 'Unknown';
-    editorStore.addTab({ id: path, path, name, content: null, language: 'plaintext', isPreview: false });
-    editorStore.setActiveTab(path);
+    void openFileInActivePane(path);
   }
 
   function ensurePaletteLoaded() {
@@ -1041,15 +1079,10 @@
   function handleTabClose(tabId: string) {
     const tab = $tabs.find((t: any) => t.id === tabId);
     if (!tab) return;
-    if (tab.isModified || (tab.path.startsWith('Untitled') && tab.content && tab.content.trim() !== '')) {
+    if (tab.isModified || (tab.path.startsWith(UNTITLED_PREFIX) && tab.content && tab.content.trim() !== '')) {
       closingTabId = tabId;
     } else {
-      // Remove from all split panes
-      const snap = splitStore.getSnapshot();
-      for (const paneId of Object.keys(snap.panes)) {
-        splitStore.closeTabInPane(paneId, tabId);
-      }
-      editorStore.closeTab(tabId);
+      editorStore.closeTabEverywhere(tabId);
       debouncedSaveFullSession();
     }
   }
@@ -1081,7 +1114,7 @@
 
   function handleCloseDialogDontSave() {
     if (!closingTabId) return;
-    editorStore.closeTab(closingTabId);
+    editorStore.closeTabEverywhere(closingTabId);
     if (isClosingWindow) {
       advanceCloseQueue();
     } else {
@@ -1295,6 +1328,12 @@
       // event when no tab is open.
       window.dispatchEvent(new CustomEvent('editor:action', { detail: { action: 'find' } }));
     }
+    if (cmdOrCtrl && key === 'h') {
+      e.preventDefault();
+      // Per-file replace widget (VS Code "Ctrl+H"): opens with the replace row
+      // expanded and focused.
+      window.dispatchEvent(new CustomEvent('editor:action', { detail: { action: 'replace' } }));
+    }
     if (cmdOrCtrl && key === ',') {
       e.preventDefault(); openSettings();
     }
@@ -1345,6 +1384,7 @@
 
     let unsubTabs = editorStore.tabs.subscribe(debouncedSaveFullSession);
     let unsubActive = editorStore.activeTabId.subscribe(debouncedSaveFullSession);
+    let unsubSourceControl = sourceControlStore.subscribe(debouncedSaveFullSession);
 
     let watchStarted = false;
     let unlistenFs: (() => void) | null = null;
@@ -1383,9 +1423,11 @@
           } else {
             if (change.path) changedPaths.add(change.path);
             if (change.type === 'deleted') {
-              editorStore.getTabsSnapshot()
-                .filter((t: any) => t.path === change.path)
-                .forEach((t: any) => editorStore.closeTab(t.id));
+              // Close the deleted file's tabs (or mark them 'deleted' when the
+              // buffer has unsaved changes) in EVERY store — the tab bar and
+              // editor render from splitStore, so editorStore-only cleanup left
+              // zombie tabs before.
+              editorStore.closeTabsOfDeletedPath(change.path);
               removedDecoPaths.push(change.path);
             }
           }
@@ -1412,14 +1454,14 @@
         const existing = new Set<string>(metadata.map((m: any) => m.path));
         const sizeByPath = new Map<string, number>(metadata.map((m: any) => [m.path, m.size]));
 
-        // Close deleted tabs
+        // Close deleted tabs (both stores — dirty buffers stay open, marked deleted)
         for (const tab of affectedTabs) {
-          if (!existing.has(tab.path)) editorStore.closeTab(tab.id);
+          if (!existing.has(tab.path)) editorStore.closeTabsOfDeletedPath(tab.path);
         }
 
         // Reload small files in one batch (large files via chunked reads)
-        const smallTabs = affectedTabs.filter((t: any) => existing.has(t.path) && (sizeByPath.get(t.path) ?? 0) <= 1_048_576);
-        const largeTabs = affectedTabs.filter((t: any) => existing.has(t.path) && (sizeByPath.get(t.path) ?? 0) > 1_048_576);
+        const smallTabs = affectedTabs.filter((t: any) => existing.has(t.path) && (sizeByPath.get(t.path) ?? 0) <= LARGE_FILE_THRESHOLD_BYTES);
+        const largeTabs = affectedTabs.filter((t: any) => existing.has(t.path) && (sizeByPath.get(t.path) ?? 0) > LARGE_FILE_THRESHOLD_BYTES);
 
         if (smallTabs.length > 0) {
           const contents = await invoke<Record<string, string | null>>('batch_read_files', {
@@ -1433,6 +1475,8 @@
             if (!latestTab) continue;
             if (!latestTab.isModified && content !== latestTab.content) {
               editorStore.setInitialContent(tab.id, content);
+              const synced = editorStore.getTabsSnapshot().find((t: any) => t.id === tab.id);
+              if (synced) splitStore.updateTabInAllPanes(synced);
             } else if (latestTab.isModified && content !== latestTab.originalContent) {
               editorStore.markTabConflict(tab.id);
               console.warn(`External change detected for ${tab.path} while modified in editor`);
@@ -1447,6 +1491,8 @@
             if (latestTab && !latestTab.isModified && chunked.content !== latestTab.content) {
               editorStore.setInitialContent(tab.id, chunked.content);
               editorStore.updateTab(tab.id, { isLargeFile: true, isPreview: true });
+              const synced = editorStore.getTabsSnapshot().find((t: any) => t.id === tab.id);
+              if (synced) splitStore.updateTabInAllPanes(synced);
             }
           } catch (e) { /* file may have been removed mid-read */ }
         }
@@ -1486,6 +1532,7 @@
       if (watchStarted) invoke('stop_fs_watch', { root: explorerRoot }).catch(() => {});
       unsubTabs();
       unsubActive();
+      unsubSourceControl();
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   });
@@ -1679,7 +1726,7 @@
             {/if}
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M6 9v6"/><path d="M18 9v2a2 2 0 0 1-2 2h-4a2 2 0 0 0-2 2v6"/></svg>
             
-            {#if gitLoading}
+            {#if gitLoading && $ui.activeSidebarPanel === 'git' && $ui.isSidebarOpen}
               <div class="absolute bottom-0 -right-1 bg-accent text-on-accent rounded-full h-4 min-w-4 flex items-center justify-center border-2 border-surface-2 shadow-elevated-sm pointer-events-none" title="Git is analyzing...">
                 <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </div>
@@ -1740,11 +1787,6 @@
           {:else if $ui.activeSidebarPanel === 'search'}
             {@const canSearchAction = $ui.searchQuery.length > 0 && $ui.searchResultCount > 0}
             <div class="flex items-center gap-0.5">
-              <Tooltip content="Smart Search">
-                <button aria-label="Smart Search" onclick={() => showSmartSearchModal = true} class="p-1 rounded transition-colors hover:bg-hover text-accent hover:text-accent/90">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
-                </button>
-              </Tooltip>
               <Tooltip content="Refresh">
                 <button aria-label="Refresh" onclick={() => uiStore.triggerSearchRefresh()} class="p-1 rounded transition-colors hover:bg-hover text-icon-default" disabled={!canSearchAction} class:opacity-50={!canSearchAction} class:cursor-not-allowed={!canSearchAction} class:hover:text-icon-active={canSearchAction}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -1831,6 +1873,7 @@
           {DiffEditorComponent}
           {MarkdownPreviewComponent}
           {ImageViewerComponent}
+          {ImageDiffComponent}
           {SettingsPageComponent}
           WelcomeTabComponent={WelcomeTab}
           onNewTextFile={handleNewTextFile}
@@ -1851,7 +1894,7 @@
       {:else}
         <span class="animate-in fade-in duration-200">Ready</span>
       {/if}
-      {#if activeTab}<span>{activeTab.language}</span>{/if}
+      {#if activeTab}<span>{formatLanguageName(activeTab.language)}</span>{/if}
       {#if $ui.globalStatus}
         <span class="animate-in fade-in duration-200" title={$ui.globalStatus}>
           {$ui.globalStatus.length > 40 ? $ui.globalStatus.slice(0, 40) + '...' : $ui.globalStatus}
@@ -1903,7 +1946,6 @@
 <RecentFoldersModal />
 
 <ToastContainer />
-<SmartSearchModal isOpen={showSmartSearchModal} onClose={() => showSmartSearchModal = false} />
 
 <style>
   :global(.scrollbar-hide::-webkit-scrollbar) { display: none; }

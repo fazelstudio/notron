@@ -25,8 +25,20 @@ export interface RepoState {
   status: string; // "Unknown" | "Checking" | "NotARepo" | "Repo"
   branch: string | null;
   has_upstream: boolean;
+  /** Full upstream ref, e.g. "origin/main". */
+  upstream?: string | null;
+  /** Remote name of the upstream, e.g. "origin". */
+  upstream_remote?: string | null;
   ahead: number;
   behind: number;
+  /** Short (8-char) HEAD commit hash; null when the branch is unborn. */
+  head_short?: string | null;
+  /** True when the current branch has no commit yet (freshly initialized repo). */
+  unborn?: boolean;
+  merge_in_progress?: boolean;
+  rebase_in_progress?: boolean;
+  cherry_pick_in_progress?: boolean;
+  remotes?: string[];
   staged: GitFileStatus[];
   unstaged: GitFileStatus[];
   untracked: GitFileStatus[];
@@ -49,6 +61,8 @@ export interface GitLogEntry {
   email: string;
   date: string;
   refs: string;
+  /** Raw parent hashes (space-separated, `%P`). Empty for the root commit. */
+  parents: string;
   stats: string;
 }
 
@@ -181,6 +195,25 @@ export async function push(cwd: string): Promise<void> {
   await invoke('git_push', { cwd });
 }
 
+/** VSCode "Publish Branch": push the current branch and set its upstream. */
+export function publishBranch(
+  cwd: string,
+  opId: string | null,
+  onProgress: (p: GitProgress) => void,
+): ProgressHandle {
+  const channel = new Channel<GitProgress>();
+  channel.onmessage = onProgress;
+
+  const promise = invoke('git_publish', { cwd, opId, progress: channel }) as Promise<void>;
+  return {
+    promise,
+    opId: opId ?? '',
+    cancel: async () => {
+      if (opId) await invoke('git_cancel_op', { opId });
+    },
+  };
+}
+
 export async function pull(cwd: string): Promise<void> {
   await invoke('git_pull', { cwd });
 }
@@ -245,6 +278,20 @@ export async function getGitFileContent(cwd: string, path: string, revision: str
     // Don't log error for new files not in HEAD yet
     if (!msg.includes('exists on disk, but not in') && !msg.includes('not in HEAD') && !msg.includes('pathspec') && !msg.includes('did not match any file(s) known to git')) {
       console.error('Failed to get git file content:', err);
+    }
+    return null;
+  }
+}
+
+export async function getGitFileBinary(cwd: string, path: string, revision: string = "HEAD"): Promise<number[] | null> {
+  if (!cwd || !path) return null;
+  try {
+    return await invoke<number[]>('get_git_file_binary', { cwd, path, revision });
+  } catch (err) {
+    const msg = String(err);
+    // Don't log error for new files not in HEAD yet
+    if (!msg.includes('exists on disk, but not in') && !msg.includes('not in HEAD') && !msg.includes('pathspec') && !msg.includes('did not match any file(s) known to git')) {
+      console.error('Failed to get git file binary:', err);
     }
     return null;
   }

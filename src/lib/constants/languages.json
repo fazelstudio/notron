@@ -1,0 +1,295 @@
+{
+  "javascript": [
+    "js",
+    "mjs",
+    "cjs",
+    "jsx"
+  ],
+  "typescript": [
+    "ts",
+    "mts",
+    "cts",
+    "tsx"
+  ],
+  "python": [
+    "py",
+    "pyw",
+    "pyi",
+    "pyx"
+  ],
+  "rust": [
+    "rs"
+  ],
+  "cpp": [
+    "c",
+    "h",
+    "cpp",
+    "cc",
+    "cxx",
+    "hpp",
+    "hh",
+    "hxx",
+    "ino"
+  ],
+  "java": [
+    "java"
+  ],
+  "html": [
+    "html",
+    "htm",
+    "xhtml"
+  ],
+  "astro": [
+    "astro"
+  ],
+  "css": [
+    "css"
+  ],
+  "less": [
+    "less"
+  ],
+  "sass": [
+    "sass",
+    "scss"
+  ],
+  "json": [
+    "json",
+    "jsonc",
+    "json5"
+  ],
+  "xml": [
+    "xml",
+    "xsd",
+    "xsl",
+    "svg",
+    "plist"
+  ],
+  "markdown": [
+    "md",
+    "markdown",
+    "mdx"
+  ],
+  "sql": [
+    "sql"
+  ],
+  "php": [
+    "php",
+    "phtml"
+  ],
+  "go": [
+    "go"
+  ],
+  "yaml": [
+    "yaml",
+    "yml"
+  ],
+  "vue": [
+    "vue"
+  ],
+  "liquid": [
+    "liquid"
+  ],
+  "jinja": [
+    "jinja",
+    "jinja2",
+    "j2"
+  ],
+  "wast": [
+    "wat",
+    "wast"
+  ],
+  "svelte": [
+    "svelte"
+  ],
+  "lezer": [
+    "grammar"
+  ],
+  "elixir": [
+    "ex",
+    "exs"
+  ],
+  "nix": [
+    "nix"
+  ],
+  "prisma": [
+    "prisma"
+  ],
+  "shell": [
+    "sh",
+    "bash",
+    "zsh",
+    "fish"
+  ],
+  "ruby": [
+    "rb",
+    "erb",
+    "rake",
+    "gemspec"
+  ],
+  "lua": [
+    "lua"
+  ],
+  "perl": [
+    "pl",
+    "pm"
+  ],
+  "powershell": [
+    "ps1",
+    "psm1",
+    "psd1"
+  ],
+  "dockerfile": [
+    "dockerfile"
+  ],
+  "toml": [
+    "toml"
+  ],
+  "properties": [
+    "ini",
+    "cfg",
+    "properties",
+    "env"
+  ],
+  "diff": [
+    "diff",
+    "patch"
+  ],
+  "cmake": [
+    "cmake"
+  ],
+  "csharp": [
+    "cs"
+  ],
+  "kotlin": [
+    "kt",
+    "kts"
+  ],
+  "scala": [
+    "scala",
+    "sc"
+  ],
+  "objective-c": [
+    "m",
+    "mm"
+  ],
+  "dart": [
+    "dart"
+  ],
+  "swift": [
+    "swift"
+  ],
+  "r": [
+    "r"
+  ],
+  "pascal": [
+    "pas",
+    "pp"
+  ],
+  "haskell": [
+    "hs"
+  ],
+  "clojure": [
+    "clj",
+    "cljs",
+    "cljc",
+    "edn"
+  ],
+  "erlang": [
+    "erl",
+    "hrl"
+  ],
+  "groovy": [
+    "groovy",
+    "gradle"
+  ],
+  "fsharp": [
+    "fs",
+    "fsi",
+    "fsx"
+  ],
+  "ocaml": [
+    "ml",
+    "mli"
+  ],
+  "nginx": [
+    "nginx",
+    "conf"
+  ],
+  "protobuf": [
+    "proto"
+  ],
+  "pug": [
+    "pug",
+    "jade"
+  ],
+  "stylus": [
+    "styl",
+    "stylus"
+  ],
+  "latex": [
+    "tex",
+    "sty",
+    "cls"
+  ],
+  "bibtex": [
+    "bib"
+  ],
+  "golfscript": [
+    "gs"
+  ],
+  "dot": [
+    "dot",
+    "gv"
+  ],
+  "handlebars": [
+    "hbs",
+    "handlebars"
+  ],
+  "hcl": [
+    "hcl",
+    "tf",
+    "tfvars"
+  ],
+  "j": [
+    "ijs"
+  ],
+  "janet": [
+    "janet"
+  ],
+  "julia": [
+    "jl"
+  ],
+  "mustache": [
+    "mustache"
+  ],
+  "pkl": [
+    "pkl"
+  ],
+  "sparql": [
+    "rq",
+    "sparql"
+  ],
+  "wgsl": [
+    "wgsl"
+  ],
+  "graphql": [
+    "graphql",
+    "gql"
+  ],
+  "zig": [
+    "zig"
+  ],
+  "glsl": [
+    "glsl",
+    "vert",
+    "frag",
+    "vs",
+    "fs"
+  ],
+  "gleam": [
+    "gleam"
+  ],
+  "solidity": [
+    "sol"
+  ]
+}

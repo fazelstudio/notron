@@ -1,7 +1,6 @@
 <script lang="ts">
   import Modal from '../common/Modal.svelte';
   import { uiStore } from '../../stores/ui';
-  import { editorStore } from '../../stores/editor';
   import { invoke } from '@tauri-apps/api/core';
 
   let { isOpen, onClose, isFromWelcome = false }: { isOpen: boolean; onClose: () => void; isFromWelcome?: boolean } = $props();
@@ -41,11 +40,9 @@
       const fullPath = `${targetDir}${sep}${fileName}`;
       await invoke('create_file', { path: fullPath });
       uiStore.triggerExplorerRefresh();
-      editorStore.addTab({
-        id: `tab-${Date.now()}`, path: fullPath,
-        name: fileName.split(/[/\\]/).pop() || fileName,
-        content: '', language: 'plaintext', isPreview: false
-      });
+      // Open through the central handler so the new file lands in the active
+      // pane tab bar like any other open.
+      window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: fullPath } }));
       onClose();
     } catch (err) { alert(`Failed to create file: ${err}`); }
   }

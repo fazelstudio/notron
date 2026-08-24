@@ -339,18 +339,11 @@ fn detect_language_from_ext(path: &str) -> &'static str {
         .unwrap_or("")
         .to_lowercase();
 
-    match ext.as_str() {
-        "js" | "jsx" | "mjs" | "cjs" => "javascript",
-        "ts" | "tsx" | "mts" | "cts" => "typescript",
-        "py" | "pyw" | "pyx" => "python",
-        "rs" => "rust",
-        "go" => "go",
-        "java" => "java",
-        "cpp" | "cxx" | "cc" | "c" | "h" | "hpp" | "hxx" => "cpp",
-        "cs" => "csharp",
-        "swift" => "swift",
-        "kt" | "kts" => "kotlin",
-        _ => "",
+    let lang = crate::file_ops::get_language_from_ext(&ext);
+    if lang == "plaintext" {
+        ""
+    } else {
+        lang
     }
 }
 

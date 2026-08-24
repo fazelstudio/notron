@@ -10,6 +10,7 @@
     DiffEditorComponent?: any;
     MarkdownPreviewComponent?: any;
     ImageViewerComponent?: any;
+    ImageDiffComponent?: any;
     SettingsPageComponent?: any;
     WelcomeTabComponent?: any;
     onNewTextFile?: () => void;
@@ -23,6 +24,7 @@
     DiffEditorComponent,
     MarkdownPreviewComponent,
     ImageViewerComponent,
+    ImageDiffComponent,
     SettingsPageComponent,
     WelcomeTabComponent,
     onNewTextFile,
@@ -72,6 +74,7 @@
     {DiffEditorComponent}
     {MarkdownPreviewComponent}
     {ImageViewerComponent}
+    {ImageDiffComponent}
     {SettingsPageComponent}
     {WelcomeTabComponent}
     {onNewTextFile}
@@ -92,6 +95,7 @@
         {DiffEditorComponent}
         {MarkdownPreviewComponent}
         {ImageViewerComponent}
+        {ImageDiffComponent}
         {SettingsPageComponent}
         {WelcomeTabComponent}
         {onNewTextFile}
@@ -120,6 +124,7 @@
         {DiffEditorComponent}
         {MarkdownPreviewComponent}
         {ImageViewerComponent}
+        {ImageDiffComponent}
         {SettingsPageComponent}
         {WelcomeTabComponent}
         {onNewTextFile}

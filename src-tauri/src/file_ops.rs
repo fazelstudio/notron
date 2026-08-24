@@ -587,6 +587,26 @@ pub async fn cancel_search(
     Ok(())
 }
 
+use std::sync::OnceLock;
+
+static LANGUAGE_MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
+
+pub fn get_language_from_ext(ext: &str) -> &'static str {
+    let map = LANGUAGE_MAP.get_or_init(|| {
+        let json_str = include_str!("../../src/lib/constants/languages.json");
+        let parsed: HashMap<String, Vec<String>> = serde_json::from_str(json_str).unwrap();
+        let mut m = HashMap::new();
+        for (lang, exts) in parsed {
+            for e in exts {
+                m.insert(e, lang.clone());
+            }
+        }
+        m
+    });
+    
+    map.get(ext).map(|s| s.as_str()).unwrap_or("plaintext")
+}
+
 #[tauri::command]
 pub async fn detect_language(path: String) -> String {
     let ext = Path::new(&path)
@@ -595,65 +615,7 @@ pub async fn detect_language(path: String) -> String {
         .unwrap_or("")
         .to_lowercase();
 
-    match ext.as_str() {
-        // Modern CM6 Languages
-        "js" | "mjs" | "cjs" | "jsx" => "javascript",
-        "ts" | "mts" | "cts" | "tsx" => "typescript",
-        "py" | "pyw" | "pyi" => "python",
-        "rs" => "rust",
-        "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "ino" => "cpp",
-        "java" => "java",
-        "html" | "htm" | "xhtml" => "html",
-        "css" => "css",
-        "less" => "less",
-        "sass" | "scss" => "sass",
-        "json" | "jsonc" | "json5" => "json",
-        "xml" | "xsd" | "xsl" | "svg" | "plist" => "xml",
-        "md" | "markdown" | "mdx" => "markdown",
-        "sql" => "sql",
-        "php" | "phtml" => "php",
-        "go" => "go",
-        "yaml" | "yml" => "yaml",
-        "vue" => "vue",
-        "liquid" => "liquid",
-        "jinja" | "jinja2" | "j2" => "jinja",
-        "wat" | "wast" => "wast",
-        "svelte" => "svelte",
-        "grammar" => "lezer",
-        
-        // Legacy Modes
-        "sh" | "bash" | "zsh" | "fish" => "shell",
-        "rb" | "erb" | "rake" | "gemspec" => "ruby",
-        "lua" => "lua",
-        "pl" | "pm" => "perl",
-        "ps1" | "psm1" | "psd1" => "powershell",
-        "dockerfile" => "dockerfile",
-        "toml" => "toml",
-        "ini" | "cfg" | "properties" | "env" => "properties",
-        "diff" | "patch" => "diff",
-        "cmake" => "cmake",
-        "cs" => "csharp",
-        "kt" | "kts" => "kotlin",
-        "scala" | "sc" => "scala",
-        "m" | "mm" => "objective-c",
-        "dart" => "dart",
-        "swift" => "swift",
-        "r" => "r",
-        "pas" | "pp" => "pascal",
-        "hs" => "haskell",
-        "clj" | "cljs" | "cljc" | "edn" => "clojure",
-        "erl" | "hrl" => "erlang",
-        "groovy" | "gradle" => "groovy",
-        "fs" | "fsi" | "fsx" => "fsharp",
-        "ml" | "mli" => "ocaml",
-        "nginx" | "conf" => "nginx",
-        "proto" => "protobuf",
-        "pug" | "jade" => "pug",
-        "styl" | "stylus" => "stylus",
-        "tex" | "sty" | "cls" => "stex",
-        
-        _ => "plaintext",
-    }.to_string()
+    get_language_from_ext(&ext).to_string()
 }
 
 /// List all files in the workspace

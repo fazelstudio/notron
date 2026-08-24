@@ -17,6 +17,7 @@
   let cachedFilesScanned = 0;
   let cachedMatchesFound = 0;
   let cachedQuery = '';
+  let cachedRoot: string | null = null;
 </script>
 
 <script lang="ts">
@@ -25,6 +26,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { onDestroy, untrack } from 'svelte';
   import { streamCommand } from '../../utils/stream';
+  import { SEARCH_DEBOUNCE_MS } from '../../constants';
   import { 
     Replace, ChevronDown, ChevronRight, X, 
     File, FileCode, FileJson, FileText, Image, Settings, Globe, Hash, Loader2,
@@ -49,12 +51,10 @@
 
   let isReplaceVisible = $state(false);
   let showReplaceModal = $state(false);
-  let isInitialLoad = true;
   const ui = uiStore;
   
   let searchQuery = $state($ui.searchQuery);
   let replaceQuery = $state($ui.replaceQuery);
-  let initialSearchQuery = $ui.searchQuery;
 
   let caseSensitive = $state(false);
   let wholeWord = $state(false);
@@ -134,31 +134,38 @@
     const cs = caseSensitive;
     const ww = wholeWord;
 
+    // The module-level result cache is scoped to ONE workspace root. On a
+    // workspace switch the stale results must never be shown for the new root.
+    if (root !== cachedRoot) {
+      cachedRoot = root;
+      cachedResults = [];
+      cachedFilesScanned = 0;
+      cachedMatchesFound = 0;
+      cachedQuery = '';
+      lastOptionKey = '00';
+      if (!untrack(() => isSearching)) {
+        results = [];
+        filesScanned = 0;
+        matchesFound = 0;
+      }
+    }
+
     clearTimeout(debounceTimer);
     if (q.trim().length > 0 && root) {
       const optKey = `${cs ? '1' : '0'}${ww ? '1' : '0'}`;
-      if (q === cachedQuery && results.length > 0 && optKey === lastOptionKey) {
-        // Already cached, do not research
+      if (q === cachedQuery && untrack(() => results.length) > 0 && optKey === lastOptionKey) {
+        // Already cached for this root — keep the results without re-searching
+        // (mirrors VSCode: switching away and back does not re-run the query).
         if (untrack(() => uiStore.getSnapshot().searchQuery) !== q) uiStore.setSearchQuery(q);
         if (untrack(() => uiStore.getSnapshot().replaceQuery) !== rq) uiStore.setReplaceQuery(rq);
-        isInitialLoad = false;
-      } else if (isInitialLoad && q === initialSearchQuery) {
-        debounceTimer = setTimeout(() => {
-          if (untrack(() => uiStore.getSnapshot().searchQuery) !== q) uiStore.setSearchQuery(q);
-          if (untrack(() => uiStore.getSnapshot().replaceQuery) !== rq) uiStore.setReplaceQuery(rq);
-          startSearch(q);
-          isInitialLoad = false;
-        }, 1500);
       } else {
-        isInitialLoad = false;
         debounceTimer = setTimeout(() => {
           if (untrack(() => uiStore.getSnapshot().searchQuery) !== q) uiStore.setSearchQuery(q);
           if (untrack(() => uiStore.getSnapshot().replaceQuery) !== rq) uiStore.setReplaceQuery(rq);
           startSearch(q);
-        }, 200);
+        }, SEARCH_DEBOUNCE_MS);
       }
     } else {
-      isInitialLoad = false;
       handleCancel();
       if (untrack(() => uiStore.getSnapshot().searchQuery) !== q) uiStore.setSearchQuery(q);
       if (untrack(() => uiStore.getSnapshot().replaceQuery) !== rq) uiStore.setReplaceQuery(rq);
@@ -170,9 +177,19 @@
   });
 
   async function startSearch(query: string, quietRefresh = false) {
-    if (currentCancelToken) {
-      await invoke('cancel_search', { token: currentCancelToken }).catch(() => {});
+    // Supersede the previous search without waiting on it — awaiting can stall
+    // on a search that never registered, and once its token is stale the old
+    // stream's batches/done are dropped by the `stale()` guard anyway.
+    const supersededToken = currentCancelToken;
+    currentCancelToken = null;
+    if (supersededToken) {
+      invoke('cancel_search', { token: supersededToken }).catch(() => {});
     }
+
+    // Snapshot the workspace this search targets. Batches arriving after a
+    // workspace switch (see the root guard in the debounce effect) are dropped
+    // so stale results never leak into the new workspace.
+    const searchRoot = untrack(() => $ui.explorerRoot);
 
     if (!quietRefresh) {
       results = [];
@@ -182,8 +199,12 @@
 
     isSearching = true;
     cachedQuery = query;
+    cachedRoot = searchRoot;
     lastOptionKey = `${caseSensitive ? '1' : '0'}${wholeWord ? '1' : '0'}`;
     currentCancelToken = crypto.randomUUID();
+    const token = currentCancelToken;
+
+    const stale = () => searchRoot !== untrack(() => cachedRoot) || token !== currentCancelToken;
 
     try {
       await streamCommand<SearchFileItem>(
@@ -197,13 +218,14 @@
             dotFiles: untrack(() => $ui.showDotFiles),
             contextLines: 0,
           },
-          workspacePath: $ui.explorerRoot,
+          workspacePath: searchRoot,
           maxResults: MAX_RESULTS,
           maxFileSize: MAX_FILE_SIZE,
-          cancelToken: currentCancelToken,
+          cancelToken: token,
         },
         {
           onBatch: (batchItems, meta) => {
+            if (stale()) return;
             if (quietRefresh) {
               results = [];
               filesScanned = 0;
@@ -220,15 +242,24 @@
                   added += item.matchCount;
                 }
               } else {
-                // Cap reached — cancel the backend scan to stop wasted I/O
-                invoke('cancel_search', { token: currentCancelToken }).catch(() => {});
+                // Cap reached — cancel the backend scan to stop wasted I/O.
+                // The token is nulled so this stream's onDone is stale; settle
+                // the UI here or the "Searching…" spinner would never clear.
+                invoke('cancel_search', { token }).catch(() => {});
                 currentCancelToken = null;
+                isSearching = false;
               }
             }
             filesScanned = meta.files_scanned ?? filesScanned;
             matchesFound = meta.matches_found ?? matchesFound;
           },
           onDone: (meta) => {
+            if (stale()) {
+              // A newer search or a workspace change superseded this one —
+              // never report its final counts.
+              if (token === currentCancelToken) currentCancelToken = null;
+              return;
+            }
             if (quietRefresh) {
               results = [];
             }
@@ -241,8 +272,10 @@
       );
     } catch (err) {
       console.error(err);
-      isSearching = false;
-      currentCancelToken = null;
+      if (token === currentCancelToken) {
+        isSearching = false;
+        currentCancelToken = null;
+      }
     }
   }
 
@@ -330,8 +363,11 @@
 
     if (closed.length > 0) {
       isSearching = true;
-      try {
-        await streamCommand(
+      // The Rust command returns as soon as the blocking work is spawned, so
+      // the "in progress" state is driven by the final `done` frame instead of
+      // the invoke promise resolving.
+      await new Promise<void>((resolve) => {
+        streamCommand(
           'replace_all_files',
           {
             options: {
@@ -345,12 +381,10 @@
           },
           {
             onBatch: () => {},
-            onDone: () => {},
+            onDone: () => resolve(),
           },
-        );
-      } catch (err) {
-        console.error('Replace All (closed files) failed', err);
-      }
+        ).catch(() => resolve());
+      });
       isSearching = false;
     }
 
@@ -359,6 +393,14 @@
       'success',
       `${targetPaths.length} file(s), ${closed.length} written on disk, ${targetPaths.length - closed.length} open in editor.`,
     );
+
+    // Invalidate the module-level cache too — a stale copy must not be shown
+    // again when the panel is re-mounted (the replaced text no longer matches).
+    cachedResults = [];
+    cachedFilesScanned = 0;
+    cachedMatchesFound = 0;
+    cachedQuery = '';
+    lastOptionKey = '00';
 
     searchQuery = '';
     replaceQuery = '';
@@ -384,59 +426,70 @@
     }
   }
 
-  function highlightMatches(text: string, query: string) {
-    if (!query) return [{ text, isMatch: false }];
-    let lowerText = text.toLowerCase();
-    const lowerQuery = query.toLowerCase();
-    
-    const firstIdx = lowerText.indexOf(lowerQuery);
-    if (firstIdx > 30) {
-      const cropStart = firstIdx - 15;
-      text = '...' + text.substring(cropStart);
-      lowerText = text.toLowerCase();
+  // Build highlight segments from the BACKEND match offsets (res.start/end),
+  // not by re-searching the line — the backend already applied match-case and
+  // whole-word rules, so the highlighted span always points at the true match
+  // (a naive indexOf re-search mis-highlights under Match Case).
+  function highlightMatchParts(res: SearchLineMatch) {
+    const raw = res.text;
+    const trimmed = raw.trim();
+    if (raw.length === 0) return [{ text: '', isMatch: false }];
+
+    let s = byteToCharIndex(raw, res.start);
+    let e = byteToCharIndex(raw, res.end);
+    if (e <= s) return [{ text: trimmed, isMatch: false }];
+
+    // Offset the match into the trimmed (display) string. Leading whitespace
+    // is a character prefix, so subtracting its char count realigns offsets.
+    const leadingWs = raw.length - raw.trimStart().length;
+    s = Math.max(s - leadingWs, 0);
+    e = Math.max(e - leadingWs, 0);
+    if (e > trimmed.length) e = trimmed.length;
+    if (s >= trimmed.length) return [{ text: trimmed, isMatch: false }];
+
+    // Crop the preview to a window around the match, like VSCode.
+    const WINDOW = 120;
+    if (trimmed.length > WINDOW) {
+      const startPos = Math.max(0, Math.min(s - 20, trimmed.length - WINDOW));
+      const endPos = startPos + WINDOW;
+      const prefixLen = startPos > 0 ? 1 : 0;
+      const display = (startPos > 0 ? '…' : '') + trimmed.slice(startPos, endPos) + (endPos < trimmed.length ? '…' : '');
+      s = s - startPos + prefixLen;
+      e = Math.min(e - startPos + prefixLen, display.length);
+      const parts = [];
+      if (s > 0) parts.push({ text: display.slice(0, s), isMatch: false });
+      if (e > s) parts.push({ text: display.slice(s, e), isMatch: true });
+      if (e < display.length) parts.push({ text: display.slice(e), isMatch: false });
+      return parts;
     }
-    
+
     const parts = [];
-    let start = 0;
-    let idx = lowerText.indexOf(lowerQuery, start);
-    while (idx !== -1) {
-      if (idx > start) parts.push({ text: text.substring(start, idx), isMatch: false });
-      parts.push({ text: text.substring(idx, idx + query.length), isMatch: true });
-      start = idx + query.length;
-      idx = lowerText.indexOf(lowerQuery, start);
-    }
-    if (start < text.length) parts.push({ text: text.substring(start), isMatch: false });
+    if (s > 0) parts.push({ text: trimmed.slice(0, s), isMatch: false });
+    if (e > s) parts.push({ text: trimmed.slice(s, e), isMatch: true });
+    if (e < trimmed.length) parts.push({ text: trimmed.slice(e), isMatch: false });
     return parts;
   }
 
   async function handleResultClick(path: string, res?: SearchLineMatch) {
     try {
-      const name = path.split(/[\/\\]/).pop() || 'Unknown';
-      const isImage = /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(name);
-      let content: string | null = null;
-      if (!isImage) {
-        const result: any = await invoke('open_file', { path });
-        content = result.content;
-      }
-      const language = isImage ? 'image' : await invoke<string>('detect_language', { path });
-      editorStore.addTab({ id: path, path, name, content, language, isPreview: true });
-
-      if (res) {
-        let startCol = res.text.toLowerCase().indexOf(searchQuery.toLowerCase());
-        let endCol = startCol >= 0 ? startCol + searchQuery.length : startCol + 1;
-        if (res.end > res.start) {
-          const s = byteToCharIndex(res.text, res.start);
-          const e = byteToCharIndex(res.text, res.end);
-          if (e > s) { startCol = s; endCol = e; }
-        }
-        const col = Math.max(startCol, 0) + 1;
-        const endColPos = Math.max(endCol, startCol) + 1;
-        
-        editorStore.updateCursor(path, res.line, col, endColPos);
-        
-        window.dispatchEvent(new CustomEvent('editor:action', {
-          detail: { action: 'goto', line: res.line, column: col, endColumn: endColPos }
+      // Route through the central open handler — the tab appears in the active
+      // pane immediately, content streams in from the background. Passing the
+      // match position makes App jump straight to the result and highlight it
+      // once the file is open (waiting until content is loaded, so the goto is
+      // never dropped on a tab that is still loading).
+      if (res && res.end > res.start) {
+        // res.start/end are byte offsets into res.text (the full line, only
+        // CRLF stripped) — convert to character columns for the goto action.
+        // This stays correct for indented lines and Match Case searches.
+        const s = byteToCharIndex(res.text, res.start);
+        const e = byteToCharIndex(res.text, res.end);
+        const startCol = Math.max(s, 0) + 1;
+        const endCol = Math.max(e, s) + 1;
+        window.dispatchEvent(new CustomEvent('request-open-file', {
+          detail: { path, line: res.line, column: startCol, endColumn: endCol }
         }));
+      } else {
+        window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path } }));
       }
     } catch (err) { console.error("Failed to open file from search", err); }
   }
@@ -473,7 +526,7 @@
         </div>
         {#if isReplaceVisible}
         <div class="flex items-center flex-1 border rounded px-1.5 py-1 border-subtle bg-canvas focus-within:border-focus">
-            <input type="text" placeholder="Replace" bind:value={replaceQuery} class="flex-1 bg-transparent text-sm outline-none min-w-0 placeholder-muted" />
+            <input type="text" placeholder="Replace" bind:value={replaceQuery} onkeydown={(e) => { if (e.key === 'Enter' && results.length > 0 && searchQuery !== replaceQuery) { e.preventDefault(); showReplaceModal = true; } }} class="flex-1 bg-transparent text-sm outline-none min-w-0 placeholder-muted" />
             <Tooltip content="Replace All" wrapperClass="ml-1 shrink-0 flex items-center">
               <button aria-label="Replace All" onclick={() => { if (results.length > 0) showReplaceModal = true; }} disabled={results.length === 0 || searchQuery === replaceQuery} class="p-0.5 rounded cursor-pointer transition-colors text-icon-default hover:text-icon-active hover:bg-hover disabled:opacity-30 disabled:cursor-not-allowed">
                 <Replace size={14} />
@@ -516,21 +569,18 @@
           {:else}
             {@const res = item.res!}
             {@const isContext = !!res.isContext}
+            {@const preview = isContext ? (res.text.trim() ? [{ text: res.text.trim(), isMatch: false }] : []) : highlightMatchParts(res)}
             <Tooltip content={res.text.trim()} wrapperClass="w-full block" followCursor={true} hoverDelay={2000}>
               <div class="flex items-start gap-2 pl-8 pr-2 h-6 py-[3px] cursor-pointer text-xs group text-secondary hover:text-primary hover:bg-hover transition-colors overflow-hidden {isContext ? 'opacity-60' : ''}" role="option" tabindex="0" aria-selected="false" onclick={() => handleResultClick(item.path, res)} onkeydown={(e) => { if (e.key === 'Enter') handleResultClick(item.path, res); }}>
                 <span class="shrink-0 w-8 text-right select-none opacity-50 text-muted">{res.line}</span>
                 <span class="truncate flex-1 group-hover:text-primary font-mono text-[11px] mt-[1px]">
-                  {#if isContext}
-                    {res.text.trim()}
-                  {:else}
-                    {#each highlightMatches(res.text.trim(), searchQuery) as part}
-                      {#if part.isMatch}
-                        <span class="border border-accent bg-accent/20 text-accent rounded-[2px] px-[1px]">{part.text}</span>
-                      {:else}
-                        {part.text}
-                      {/if}
-                    {/each}
-                  {/if}
+                  {#each preview as part}
+                    {#if part.isMatch}
+                      <span class="border border-accent bg-accent/20 text-accent rounded-[2px] px-[1px]">{part.text}</span>
+                    {:else}
+                      {part.text}
+                    {/if}
+                  {/each}
                 </span>
               </div>
             </Tooltip>

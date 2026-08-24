@@ -1,12 +1,16 @@
 <script lang="ts">
   import { uiStore } from '../../stores/ui';
+  import { sourceControlStore } from '../../stores/sourceControl';
+  import { buildChangeTree } from '../../utils/gitChangeTree';
+  import type { ChangeTreeNode } from '../../utils/gitChangeTree';
   import { editorStore } from '../../stores/editor';
+  import { splitStore } from '../../stores/split';
   import { terminalStore } from '../../stores/terminal';
   import { invoke } from '@tauri-apps/api/core';
   import { onMount } from 'svelte';
   import { gitRepoStore } from '../../stores/gitRepo';
   import type { GitFileStatus } from '../../services/git';
-  import { Plus, Minus, RefreshCw, Upload, Download, Loader2, FileText, ChevronDown, ChevronRight, GitBranch, MoreHorizontal, Target, Cloud, Undo2, Settings, X, Check, Copy } from 'lucide-svelte';
+  import { Plus, Minus, RefreshCw, Upload, Download, Loader2, FileText, ChevronDown, ChevronRight, GitBranch, MoreHorizontal, Target, Cloud, Undo2, Settings, X, Check, Copy, Folder, FolderOpen } from 'lucide-svelte';
   import Tooltip from '../common/Tooltip.svelte';
   import { getFileIcon } from '../../utils/fileIcons';
   import { getGitStatusStyle, getExpandedFileStatusStyle } from '../../utils/gitStatusStyles';
@@ -27,14 +31,18 @@
   let graphVisible = $state(true);
   
   let showChangesMenu = $state(false);
-  let isChangesTreeView = $state(false);
-
   let showGraphMenu = $state(false);
-  let isGraphTreeView = $state(false);
+
+  const isChangesTreeView = $derived($sourceControlStore.changesView === 'tree');
+  const isGraphTreeView = $derived($sourceControlStore.graphView === 'tree');
+  const collapsedFolders = $derived(new Set($sourceControlStore.collapsedFolders));
+  const collapsedGraphFolders = $derived(new Set($sourceControlStore.graphCollapsedFolders));
 
   let expandedCommit = $state<string | null>(null);
   let expandedCommitFiles = $state<import('../../services/git').GitFileStatus[]>([]);
   let expandedCommitLoading = $state(false);
+  const iconTheme = $derived(settingsStore.effectiveSettings.icon_theme);
+  const expandedCommitTree = $derived(buildChangeTree(expandedCommitFiles));
 
   async function toggleCommitExpansion(commitHash: string) {
     if (expandedCommit === commitHash) {
@@ -61,6 +69,10 @@
 
   let availability = $derived($gitRepoStore.availability);
   let repo = $derived($gitRepoStore.repo);
+  const conflictedTree = $derived(buildChangeTree(repo?.conflicted ?? []));
+  const stagedTree = $derived(buildChangeTree(repo?.staged ?? []));
+  const unstagedTree = $derived(buildChangeTree(repo?.unstaged ?? []));
+  const untrackedTree = $derived(buildChangeTree(repo?.untracked ?? []));
   let commits = $derived($gitRepoStore.commits);
   let lastError = $derived($gitRepoStore.lastError);
   let syncing = $derived($gitRepoStore.syncing);
@@ -164,6 +176,10 @@
     await gitRepoStore.cancelSync();
   }
 
+  async function handleRefresh() {
+    await gitRepoStore.refresh();
+  }
+
   async function handleRedetect() {
     await gitRepoStore.reDetect();
   }
@@ -184,45 +200,297 @@
   }
 
   import { getGitFileContent, getCommitFiles } from '../../services/git';
+  import type { EditorTab } from '../../stores/editor';
 
+  /** Open (or activate) a tab in the active split pane — SplitEditorPane renders
+   *  pane tabs from the split store, so every add is mirrored into it.
+   *  Preview-tab rules: an already-open tab is only activated (never reloaded);
+   *  otherwise an unmodified current tab is replaced in place, and a new tab is
+   *  only added when the current tab has unsaved changes. Returns whether the
+   *  tab was actually added/replaced (false = existing tab was only activated). */
+  function addTabToActivePane(newTab: EditorTab, matchByPath = false): { id: string; isNew: boolean } {
+    const splitSnap = splitStore.getSnapshot();
+    const activePaneId = splitSnap.activePaneId;
+    const pane = activePaneId ? splitSnap.panes[activePaneId] : null;
+
+    const existing = pane?.tabs.find((t) => t.id === newTab.id || (matchByPath && t.path === newTab.path));
+    if (existing && activePaneId) {
+      splitStore.setActivePaneTab(activePaneId, existing.id);
+      editorStore.setActiveTab(existing.id);
+      return { id: existing.id, isNew: false };
+    }
+
+    // Replace the current tab in place when it has no unsaved changes.
+    if (activePaneId && pane?.activeTabId) {
+      const active = pane.tabs.find((t) => t.id === pane.activeTabId);
+      if (active && !active.isModified && active.id !== newTab.id) {
+        const isUntitledWithContent = active.path.startsWith('Untitled') &&
+          active.content && active.content.trim() !== '';
+        if (!isUntitledWithContent) {
+          editorStore.closeTab(active.id);
+          editorStore.addTab(newTab);
+          editorStore.setActiveTab(newTab.id);
+          splitStore.replaceTabInPane(activePaneId, active.id, newTab);
+          return { id: newTab.id, isNew: true };
+        }
+      }
+    }
+
+    editorStore.addTab(newTab);
+    editorStore.setActiveTab(newTab.id);
+    if (activePaneId) splitStore.addTabToPane(activePaneId, newTab);
+    return { id: newTab.id, isNew: true };
+  }
+
+  /** Copy the up-to-date tab from the editor store back into the split store
+   *  (SplitEditorPane reads the split store, so content must land there). */
+  function syncTabToPanes(tabId: string) {
+    const updatedTab = editorStore.getTabsSnapshot().find((t) => t.id === tabId);
+    if (updatedTab) splitStore.updateTabInAllPanes(updatedTab);
+  }
+
+  /** Open a plain, explorer-style tab — eagerly reads from disk. */
+  async function openPlainTab(fullPath: string, name: string) {
+    const splitSnap = splitStore.getSnapshot();
+    const activePaneId = splitSnap.activePaneId;
+    const pane = activePaneId ? splitSnap.panes[activePaneId] : null;
+    const existing = pane?.tabs.find((t) => t.path === fullPath);
+    if (existing && activePaneId) {
+      splitStore.setActivePaneTab(activePaneId, existing.id);
+      editorStore.setActiveTab(existing.id);
+      return;
+    }
+
+    let content: string | null = null;
+    let isLargeFile = false;
+    let isPreview = false;
+    try {
+      content = await invoke<string>('read_file_text', { path: fullPath });
+    } catch (e) {
+      if (String(e) === '__BINARY__') {
+        content = '';
+      } else if (String(e) === '__LARGE_FILE__') {
+        const chunked = await invoke<any>('read_file_chunked', { path: fullPath });
+        content = chunked.content;
+        isLargeFile = true;
+        isPreview = true;
+      } else {
+        console.error('Failed to open file:', e);
+        uiStore.addToast('Open File', 'alert', String(e));
+        return;
+      }
+    }
+    const language = await invoke<string>('detect_language', { path: fullPath }).catch(() => 'plaintext');
+    const tab: EditorTab = {
+      id: `sc-${Date.now()}`,
+      path: fullPath,
+      name,
+      content,
+      originalContent: content,
+      isModified: false,
+      language,
+      isPreview,
+      isLargeFile,
+      isUnsupported: false,
+      lastAccessed: Date.now(),
+      status: content !== null ? ('active' as const) : ('loaded' as const),
+    };
+    addTabToActivePane(tab, true);
+  }
+
+  /** Changes section — modified files open a "Working Tree" diff with the
+   *  right side editable; new/untracked files open like the explorer. SVG is
+   *  text here, so it participates in the diff like any other code file. */
   async function openFile(file: GitFileStatus) {
     if (!$ui.explorerRoot) return;
     const fullPath = `${$ui.explorerRoot}/${file.path}`;
     const name = file.path.split('/').pop() || file.path;
 
-    let originalContent = '';
-    if (file.status !== 'U' && file.status !== 'A') {
-      originalContent = (await getGitFileContent($ui.explorerRoot, file.path, "HEAD")) ?? '';
+    const isImage = /\.(png|jpe?g|gif|webp|ico)$/i.test(name);
+    if (isImage) {
+      window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: fullPath } }));
+      return;
     }
 
+    // New files (untracked/added) have nothing to diff against — plain tab.
+    if (file.status === 'U' || file.status === 'A') {
+      await openPlainTab(fullPath, name);
+      return;
+    }
+
+    if (file.status === 'Deleted' || file.status === 'D') {
+      uiStore.addToast(`File ${name} is deleted from disk`, 'success');
+      // Continue to show diff against empty
+    }
+
+    const originalContent = (await getGitFileContent($ui.explorerRoot, file.path, "HEAD")) ?? '';
     const tabId = fullPath + "-diff";
 
-    editorStore.addTab({ 
-      id: tabId, 
-      path: fullPath, 
-      name: `${name} (Working Tree)`, 
-      content: null, 
-      language: 'plaintext', 
-      isPreview: true, 
+    const { isNew } = addTabToActivePane({
+      id: tabId,
+      path: fullPath,
+      name: `${name} (Working Tree)`,
+      content: null,
+      originalContent: null,
+      isModified: false,
+      language: 'plaintext',
+      isPreview: true,
       isLoading: true,
       isDiff: true,
-      diffOriginalContent: originalContent
+      diffOriginalContent: originalContent,
+      diffOriginalLabel: `${name} (HEAD)`,
+      diffCurrentLabel: `${name} (Working Tree)`,
+      diffOriginalRevision: 'HEAD',
+      diffCurrentRevision: 'working-tree',
+      diffEditable: true,
+      noPreview: true,
+      isUnsupported: false,
+      lastAccessed: Date.now(),
+      status: 'active' as const,
     });
+    // Already open → just activated, do not reload (and never clobber edits).
+    if (!isNew) return;
 
-    invoke<string>('read_file_text', { path: fullPath }).then((content) => {
+    invoke<string>('read_file_text', { path: fullPath }).then(async (content) => {
+      const language = await invoke<string>('detect_language', { path: fullPath }).catch(() => 'plaintext');
       editorStore.setInitialContent(tabId, content);
+      editorStore.setTabLoading(tabId, false);
+      editorStore.updateTab(tabId, { language });
+      syncTabToPanes(tabId);
     }).catch(err => {
       console.error(err);
       editorStore.setInitialContent(tabId, '');
       editorStore.setTabLoading(tabId, false);
+      syncTabToPanes(tabId);
     });
   }
 
-  /** Returns the badge character matching VSCode and TreeNode conventions. */
-  const statusBadgeChar = (code: string) => {
-    if (code === 'Conflict') return '!';
-    return code;
-  };
+  /** Graph section — a commit file opens at that revision: plain read-only tab
+   *  when the file is new, read-only diff against its parent otherwise.
+   *  Commit tabs always show code (no preview) — diffs are the comparison. */
+  async function openCommitFile(file: GitFileStatus, commitHash: string, parentHash?: string | null) {
+    if (!$ui.explorerRoot) return;
+    const fullPath = `${$ui.explorerRoot}/${file.path}`;
+    const name = file.path.split('/').pop() || file.path;
+    const shortHash = commitHash.slice(0, 7);
+    const prevShort = parentHash ? parentHash.slice(0, 7) : '(root)';
+    // SVG is text, so it opens as code/diff — only raster images use a viewer.
+    const isImage = /\.(png|jpe?g|gif|webp|ico)$/i.test(name);
+
+    // No previous version (added file) — same tab format as explorer but frozen
+    // at the commit revision and read-only.
+    if (file.status === 'A') {
+      const content = isImage
+        ? null
+        : (await getGitFileContent($ui.explorerRoot, file.path, commitHash)) ?? '';
+      const language = isImage
+        ? 'image'
+        : await invoke<string>('detect_language', { path: fullPath }).catch(() => 'plaintext');
+
+      addTabToActivePane({
+        id: `${fullPath}::${commitHash}`,
+        path: fullPath,
+        name: `${name} (${shortHash})`,
+        content,
+        originalContent: content,
+        isModified: false,
+        language,
+        isPreview: true,
+        isLoading: false,
+        readOnly: true,
+        gitRevision: commitHash,
+        noPreview: true,
+        isUnsupported: false,
+        lastAccessed: Date.now(),
+        status: 'active' as const,
+      });
+      return;
+    }
+
+    // Deleted in this commit — nothing to compare against: show the file's
+    // last existing version (the parent revision), read-only, no split.
+    if (file.status === 'D') {
+      const revision = parentHash || '';
+      const revShort = parentHash ? parentHash.slice(0, 7) : '(root)';
+      const content = isImage
+        ? null
+        : (await getGitFileContent($ui.explorerRoot, file.path, revision)) ?? '';
+      const language = isImage
+        ? 'image'
+        : await invoke<string>('detect_language', { path: fullPath }).catch(() => 'plaintext');
+
+      addTabToActivePane({
+        id: `${fullPath}::${commitHash}-deleted`,
+        path: fullPath,
+        name: `${name} (${revShort})`,
+        content,
+        originalContent: content,
+        isModified: false,
+        language,
+        isPreview: true,
+        isLoading: false,
+        readOnly: true,
+        gitRevision: parentHash || '',
+        noPreview: true,
+        isUnsupported: false,
+        lastAccessed: Date.now(),
+        status: 'active' as const,
+      });
+      return;
+    }
+
+    if (isImage) {
+      addTabToActivePane({
+        id: `${fullPath}::${commitHash}-imagediff`,
+        path: fullPath,
+        name: `${name} (${prevShort}) <-> ${name} (${shortHash})`,
+        content: null,
+        originalContent: null,
+        isModified: false,
+        language: 'image-diff',
+        isPreview: true,
+        isLoading: false,
+        diffOriginalLabel: `${name} (${prevShort})`,
+        diffCurrentLabel: `${name} (${shortHash})`,
+        diffOriginalRevision: parentHash || '',
+        diffCurrentRevision: commitHash,
+        noPreview: true,
+        isUnsupported: false,
+        lastAccessed: Date.now(),
+        status: 'active' as const,
+      });
+      return;
+    }
+
+    const originalContent = parentHash
+      ? (await getGitFileContent($ui.explorerRoot, file.path, parentHash)) ?? ''
+      : '';
+    const currentContent = (await getGitFileContent($ui.explorerRoot, file.path, commitHash)) ?? '';
+    const language = await invoke<string>('detect_language', { path: fullPath }).catch(() => 'plaintext');
+
+    addTabToActivePane({
+      id: `${fullPath}::${commitHash}-diff`,
+      path: fullPath,
+      name: `${name} (${prevShort}) <-> ${name} (${shortHash})`,
+      content: currentContent,
+      originalContent: currentContent,
+      isModified: false,
+      language,
+      isPreview: true,
+      isLoading: false,
+      isDiff: true,
+      diffOriginalContent: originalContent,
+      diffOriginalLabel: `${name} (${prevShort})`,
+      diffCurrentLabel: `${name} (${shortHash})`,
+      diffOriginalRevision: parentHash || '',
+      diffCurrentRevision: commitHash,
+      diffEditable: false,
+      noPreview: true,
+      isUnsupported: false,
+      lastAccessed: Date.now(),
+      status: 'active' as const,
+    });
+  }
 
   onMount(() => {
     window.addEventListener('mousemove', onMouseMove);
@@ -235,6 +503,109 @@
   });
 
 </script>
+
+  {#snippet unstageActions(file: import('../../services/git').GitFileStatus)}
+    <Tooltip content="Unstage Changes">
+      <button onclick={(e) => { e.stopPropagation(); handleUnstage(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
+        <Minus class="w-3.5 h-3.5" />
+      </button>
+    </Tooltip>
+  {/snippet}
+
+  {#snippet stageDiscardActions(file: import('../../services/git').GitFileStatus)}
+    <Tooltip content="Discard Changes">
+      <button onclick={(e) => { e.stopPropagation(); handleDiscard(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-[var(--color-error)]">
+        <Undo2 class="w-3.5 h-3.5" />
+      </button>
+    </Tooltip>
+    <Tooltip content="Stage Changes">
+      <button onclick={(e) => { e.stopPropagation(); handleStage(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
+        <Plus class="w-3.5 h-3.5" />
+      </button>
+    </Tooltip>
+  {/snippet}
+
+  {#snippet stageOnlyActions(file: import('../../services/git').GitFileStatus)}
+    <Tooltip content="Stage File">
+      <button onclick={(e) => { e.stopPropagation(); handleStage(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
+        <Plus class="w-3.5 h-3.5" />
+      </button>
+    </Tooltip>
+  {/snippet}
+
+
+  {#snippet noActions(_: import('../../services/git').GitFileStatus)}
+    <!-- no actions -->
+  {/snippet}
+
+  {#snippet renderTreeNodes(nodes: ChangeTreeNode[], depth: number, fileActions: import('svelte').Snippet<[import('../../services/git').GitFileStatus]>, overrideStatus?: string, onOpen: (file: import('../../services/git').GitFileStatus) => void = openFile, view: 'changes' | 'graph' = 'changes')}
+    {@const collapsed = view === 'graph' ? collapsedGraphFolders : collapsedFolders}
+    {@const toggleCollapse = (path: string) => sourceControlStore.toggleCollapsedFolder(view, path)}
+    {#each nodes as node (node.path)}
+      {#if node.type === 'folder'}
+        <div class="relative flex flex-col">
+          <div class="sticky shadow-[0_1px_2px_rgba(0,0,0,0.1)] h-7 flex items-center" style="background-color: var(--tree-bg, var(--color-surface)); top: {28 + depth * 28}px; z-index: {20 - depth};">
+            <div role="button" tabindex="0" class="flex-1 flex items-center py-1 hover:bg-hover group cursor-pointer h-7" style="padding-left: calc(var(--base-pad, 0px) + {6 + depth * 14}px); padding-right: 12px;" onclick={() => toggleCollapse(node.path)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleCollapse(node.path); }}>
+              <span class="w-3.5 mr-1 flex items-center justify-center text-icon-default shrink-0">
+                {#if node.count > 0}
+                  {#if collapsed.has(node.path)}
+                    <ChevronRight class="w-3.5 h-3.5" />
+                  {:else}
+                    <ChevronDown class="w-3.5 h-3.5" />
+                  {/if}
+                {/if}
+              </span>
+              {#if iconTheme === 'default' || !iconTheme}
+                {#if collapsed.has(node.path)}
+                  <Folder class="w-4 h-4 mr-1.5 shrink-0 text-icon-default" />
+                {:else}
+                  <FolderOpen class="w-4 h-4 mr-1.5 shrink-0 text-icon-default" />
+                {/if}
+              {:else if iconTheme === 'material'}
+                <MaterialIcon name={node.name} isDir size={14} />
+              {/if}
+              <span class="text-xs truncate flex-1">{node.name}</span>
+              <span class="bg-surface-3 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-muted">{node.count}</span>
+            </div>
+          </div>
+          {#if !collapsed.has(node.path)}
+            {@render renderTreeNodes(node.children, depth + 1, fileActions, overrideStatus, onOpen, view)}
+          {/if}
+        </div>
+      {:else}
+        {@render fileRow(node.file as import('../../services/git').GitFileStatus, getGitStatusStyle(overrideStatus || node.file!.status), depth, fileActions, onOpen)}
+      {/if}
+    {/each}
+  {/snippet}
+
+  {#snippet fileRow(file: import('../../services/git').GitFileStatus, statusStyle: string, depth = 0, actions: import('svelte').Snippet<[import('../../services/git').GitFileStatus]> = noActions, onOpen: (file: import('../../services/git').GitFileStatus) => void = openFile)}
+    {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
+    <div role="button" tabindex="0" class="flex items-center justify-between py-1 hover:bg-hover group cursor-pointer h-8" style="padding-left: calc(var(--base-pad, 0px) + {12 + depth * 14}px); padding-right: 12px;" onclick={() => onOpen(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(file); }}>
+      <div class="flex items-center gap-2 overflow-hidden flex-1">
+        {#if iconTheme === 'default' || !iconTheme}
+          <Icon size={14} class="shrink-0" style={statusStyle} />
+        {:else if iconTheme === 'material'}
+          <MaterialIcon name={file.path.split('/').pop() || ''} size={14} />
+        {/if}
+        <span class="text-sm truncate" style={statusStyle}>{file.path.split('/').pop()}</span>
+        <span class="text-[10px] text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+          {@render actions(file)}
+          <Tooltip content="Open File">
+            <button onclick={(e) => { e.stopPropagation(); onOpen(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
+              <FileText class="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
+        </div>
+        <span class="text-[10px] font-mono font-bold w-4 text-center shrink-0" style={statusStyle}>
+          {file.status}
+        </span>
+      </div>
+    </div>
+  {/snippet}
+
 
 <div class="flex flex-col h-full bg-surface">
   {#if availabilityLoading}
@@ -303,7 +674,7 @@
         <span class="text-xs font-semibold text-primary">CHANGES</span>
         <div class="flex items-center gap-1">
           <Tooltip content="Refresh">
-            <button onclick={handleRedetect} disabled={syncing} class="p-1 rounded hover:bg-hover text-icon-default disabled:opacity-50">
+            <button onclick={handleRefresh} disabled={syncing} class="p-1 rounded hover:bg-hover text-icon-default disabled:opacity-50">
               <RefreshCw class="w-3.5 h-3.5 {syncing ? 'animate-spin' : ''}" />
             </button>
           </Tooltip>
@@ -318,11 +689,11 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="fixed inset-0 z-40" onclick={() => showChangesMenu = false}></div>
           <div class="absolute right-0 top-6 z-50 w-48 bg-surface border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
-            <button onclick={() => { isChangesTreeView = false; showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+            <button onclick={() => { sourceControlStore.setChangesView('list'); showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
               <span class="w-4 flex justify-center shrink-0 mr-1">{#if !isChangesTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
               View as List
             </button>
-            <button onclick={() => { isChangesTreeView = true; showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+            <button onclick={() => { sourceControlStore.setChangesView('tree'); showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
               <span class="w-4 flex justify-center shrink-0 mr-1">{#if isChangesTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
               View as Tree
             </button>
@@ -436,36 +807,18 @@
               <span class="text-[10px] font-semibold uppercase" style="color: var(--accent)">Conflicts</span>
             </div>
             <div class="flex flex-col mb-2">
-              {#each repo.conflicted as file}
-                {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
-                {@const conflictStyle = getGitStatusStyle('Conflict')}
-                <div role="button" tabindex="0" class="flex items-center justify-between px-3 py-1 hover:bg-hover group cursor-pointer h-8" onclick={() => openFile(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') openFile(file); }}>
-                  <div class="flex items-center gap-2 overflow-hidden flex-1">
-                    {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
-                      <Icon size={14} class="shrink-0" style={conflictStyle} />
-                    {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
-                      <MaterialIcon name={file.path.split('/').pop() || ''} size={14} />
-                    {/if}
-                    <span class="text-sm truncate" style={conflictStyle}>{file.path.split('/').pop()}</span>
-                    <span class="text-xs text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
-                  </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Tooltip content="Open File">
-                        <button onclick={(e) => { e.stopPropagation(); openFile(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
-                          <FileText class="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                    </div>
-                    <span class="text-[10px] w-4 text-center shrink-0 font-bold" style={conflictStyle}>!</span>
-                  </div>
-                </div>
-              {/each}
+              {#if isChangesTreeView}
+                {@render renderTreeNodes(conflictedTree, 0, noActions, 'Conflict')}
+              {:else}
+                {#each repo.conflicted as file (file.path)}
+                  {@render fileRow(file, getGitStatusStyle('Conflict'), 0, noActions)}
+                {/each}
+              {/if}
             </div>
           {/if}
 
           {#if repo.staged.length > 0}
-            <div class="flex items-center justify-between px-3 py-1 bg-surface-2 group sticky top-0 z-10 border-b border-subtle shadow-elevated-sm">
+            <div class="flex items-center justify-between px-3 py-1 bg-surface-2 group sticky top-0 z-30 h-7 border-b border-subtle shadow-elevated-sm">
               <span class="text-[10px] font-semibold uppercase text-secondary">Staged Changes</span>
               <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Tooltip content="Unstage All Changes">
@@ -476,41 +829,18 @@
               </div>
             </div>
             <div class="flex flex-col mb-2">
-              {#each repo.staged as file}
-                {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
-                {@const statusStyle = getGitStatusStyle(file.status)}
-                <div role="button" tabindex="0" class="flex items-center justify-between px-3 py-1 hover:bg-hover group cursor-pointer h-8" onclick={() => openFile(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') openFile(file); }}>
-                  <div class="flex items-center gap-2 overflow-hidden flex-1">
-                    {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
-                      <Icon size={14} class="shrink-0" style={statusStyle} />
-                    {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
-                      <MaterialIcon name={file.path.split('/').pop() || ''} size={14} />
-                    {/if}
-                    <span class="text-sm truncate" style={statusStyle}>{file.path.split('/').pop()}</span>
-                    <span class="text-xs text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
-                  </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Tooltip content="Open File">
-                        <button onclick={(e) => { e.stopPropagation(); openFile(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
-                          <FileText class="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                      <Tooltip content="Unstage Changes">
-                        <button onclick={(e) => { e.stopPropagation(); handleUnstage(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
-                          <Minus class="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                    </div>
-                    <span class="text-[10px] w-4 text-center shrink-0 font-bold" style={statusStyle}>{statusBadgeChar(file.status)}</span>
-                  </div>
-                </div>
-              {/each}
+              {#if isChangesTreeView}
+                {@render renderTreeNodes(stagedTree, 0, unstageActions)}
+              {:else}
+                {#each repo.staged as file (file.path)}
+                  {@render fileRow(file, getGitStatusStyle(file.status), 0, unstageActions)}
+                {/each}
+              {/if}
             </div>
           {/if}
 
           {#if repo.unstaged.length > 0 || repo.untracked.length > 0}
-            <div class="flex items-center justify-between px-3 py-1 bg-surface-2 group sticky top-0 z-10 border-y border-subtle shadow-elevated-sm mt-2">
+            <div class="flex items-center justify-between px-3 py-1 bg-surface-2 group sticky top-0 z-30 h-7 border-y border-subtle shadow-elevated-sm mt-2">
               <span class="text-[10px] font-semibold uppercase text-secondary">Changes</span>
               <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Tooltip content="Stage All Changes">
@@ -521,69 +851,23 @@
               </div>
             </div>
             <div class="flex flex-col">
-              {#each repo.unstaged as file}
-                {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
-                {@const statusStyle = getGitStatusStyle(file.status)}
-                <div role="button" tabindex="0" class="flex items-center justify-between px-3 py-1 hover:bg-hover group cursor-pointer h-8" onclick={() => openFile(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') openFile(file); }}>
-                  <div class="flex items-center gap-2 overflow-hidden flex-1">
-                    {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
-                      <Icon size={14} class="shrink-0" style={statusStyle} />
-                    {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
-                      <MaterialIcon name={file.path.split('/').pop() || ''} size={14} />
-                    {/if}
-                    <span class="text-sm truncate" style={statusStyle}>{file.path.split('/').pop()}</span>
-                    <span class="text-xs text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
-                  </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Tooltip content="Open File">
-                        <button onclick={(e) => { e.stopPropagation(); openFile(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
-                          <FileText class="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                      <Tooltip content="Stage Changes">
-                        <button onclick={(e) => { e.stopPropagation(); handleStage(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
-                          <Plus class="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                      <Tooltip content="Discard Changes">
-                        <button onclick={(e) => { e.stopPropagation(); handleDiscard(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-[var(--color-error)]">
-                          <Undo2 class="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                    </div>
-                    <span class="text-[10px] w-4 text-center shrink-0 font-bold" style={statusStyle}>{statusBadgeChar(file.status)}</span>
-                  </div>
-                </div>
-              {/each}
+              {#if isChangesTreeView}
+                {@render renderTreeNodes(unstagedTree, 0, stageDiscardActions)}
+              {:else}
+                {#each repo.unstaged as file (file.path)}
+                  {@render fileRow(file, getGitStatusStyle(file.status), 0, stageDiscardActions)}
+                {/each}
+              {/if}
 
               {#if repo.untracked.length > 0}
                 <div class="px-3 py-1 text-[10px] font-semibold uppercase text-secondary bg-surface-2/50 mt-1">Untracked</div>
-                {#each repo.untracked as file}
-                  {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
-                  {@const untrackedStyle = getGitStatusStyle('U')}
-                  <div role="button" tabindex="0" class="flex items-center justify-between px-3 py-1 hover:bg-hover group cursor-pointer h-8" onclick={() => openFile(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') openFile(file); }}>
-                    <div class="flex items-center gap-2 overflow-hidden flex-1">
-                      {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
-                        <Icon size={14} class="shrink-0" style={untrackedStyle} />
-                      {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
-                        <MaterialIcon name={file.path.split('/').pop() || ''} size={14} />
-                      {/if}
-                      <span class="text-sm truncate" style={untrackedStyle}>{file.path.split('/').pop()}</span>
-                      <span class="text-xs text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                      <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Tooltip content="Stage File">
-                          <button onclick={(e) => { e.stopPropagation(); handleStage(file); }} class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active">
-                            <Plus class="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                      </div>
-                      <span class="text-[10px] w-4 text-center shrink-0 font-bold" style={untrackedStyle}>U</span>
-                    </div>
-                  </div>
+                {#if isChangesTreeView}
+                {@render renderTreeNodes(untrackedTree, 0, stageOnlyActions, 'U')}
+              {:else}
+                {#each repo.untracked as file (file.path)}
+                  {@render fileRow(file, getGitStatusStyle('U'), 0, stageOnlyActions)}
                 {/each}
+              {/if}
               {/if}
             </div>
           {:else if repo.staged.length === 0 && repo.conflicted.length === 0}
@@ -625,9 +909,11 @@
             <ChevronDown class="w-3.5 h-3.5 mr-1 text-icon-default" />
             <span class="text-xs font-semibold uppercase text-secondary">Graph</span>
           </div>
-          <div class="flex items-center gap-1 shrink-0">
-            <Tooltip content="Refresh Graph">
-              <button onclick={handleRedetect} disabled={syncing} class="p-1 rounded hover:bg-hover text-icon-default disabled:opacity-50">
+          
+            <div class="flex items-center gap-1 shrink-0">
+              <Tooltip content="Refresh Graph">
+
+              <button onclick={handleRefresh} disabled={syncing} class="p-1 rounded hover:bg-hover text-icon-default disabled:opacity-50">
                 <RefreshCw class="w-3.5 h-3.5 {syncing ? 'animate-spin' : ''}" />
               </button>
             </Tooltip>
@@ -664,11 +950,11 @@
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="fixed inset-0 z-40" onclick={() => showGraphMenu = false}></div>
             <div class="absolute right-0 top-8 z-50 w-48 bg-surface border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
-              <button onclick={() => { isGraphTreeView = false; showGraphMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+              <button onclick={() => { sourceControlStore.setGraphView('list'); showGraphMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
                 <span class="w-4 flex justify-center shrink-0 mr-1">{#if !isGraphTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
                 View as List
               </button>
-              <button onclick={() => { isGraphTreeView = true; showGraphMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+              <button onclick={() => { sourceControlStore.setGraphView('tree'); showGraphMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
                 <span class="w-4 flex justify-center shrink-0 mr-1">{#if isGraphTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
                 View as Tree
               </button>
@@ -678,7 +964,7 @@
         <div class="flex-1 overflow-y-auto bg-surface relative">
           {#if commits.length > 0}
             <div class="absolute left-[21px] top-0 bottom-0 w-[2px] bg-subtle z-0"></div>
-            {#each commits as commit}
+            {#each commits as commit (commit.hash)}
               <div class="flex flex-col">
                 <!-- Commit Row -->
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -687,7 +973,7 @@
                   unstyled={true} 
                   pointerEvents={true}
                   hoverDelay={400}
-                  wrapperClass="flex w-full items-center px-3 py-1 hover:bg-hover group cursor-pointer gap-2 h-7 relative z-10"
+                  wrapperClass="flex w-full items-center hover:bg-hover group cursor-pointer h-7 sticky top-0 z-30 bg-surface border-y border-transparent hover:border-subtle transition-colors"
                 >
                   {#snippet customContent()}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -745,7 +1031,7 @@
                   {/snippet}
 
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div class="flex w-full items-center" onclick={() => toggleCommitExpansion(commit.hash)}>
+                  <div class="flex w-full items-center h-full px-2" onclick={() => toggleCommitExpansion(commit.hash)}>
                     <div class="flex items-center justify-center w-5 h-5 shrink-0 bg-surface rounded-full">
                       <div class="w-2 h-2 rounded-full border-2 border-accent bg-surface z-10"></div>
                     </div>
@@ -788,31 +1074,24 @@
 
                 <!-- Expanded Files -->
                 {#if expandedCommit === commit.hash}
-                  <div class="flex flex-col pl-6 bg-surface-2 border-y border-subtle py-1">
+                  <div class="flex flex-col bg-surface-2 border-y border-subtle py-1" style="--base-pad: 24px; --tree-bg: var(--color-surface-2);">
                     {#if expandedCommitLoading}
                       <div class="text-[10px] text-muted px-4 py-2 flex items-center gap-2">
                         <Loader2 class="w-3 h-3 animate-spin" /> Loading files...
                       </div>
                     {:else}
-                      {#each expandedCommitFiles as file}
-                        {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
-                        <!-- svelte-ignore a11y_click_events_have_key_events -->
-                        <!-- svelte-ignore a11y_no_static_element_interactions -->
-                        <div class="flex items-center justify-between px-3 py-1 hover:bg-hover group cursor-pointer h-7" onclick={() => openFile(file)}>
-                          <div class="flex items-center gap-2 overflow-hidden flex-1">
-                            {#if settingsStore.effectiveSettings.icon_theme !== 'off'}
-                              <Icon size={12} class="text-icon-default shrink-0" />
-                            {/if}
-                            <span class="text-xs truncate text-primary">{file.path.split('/').pop()}</span>
-                            <span class="text-[10px] text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
-                          </div>
-                          <span class="text-[10px] font-mono font-bold shrink-0 ml-2" style={getExpandedFileStatusStyle(file.status)}>
-                            {file.status}
-                          </span>
-                        </div>
-                      {/each}
-                      {#if expandedCommitFiles.length === 0}
-                        <div class="text-[10px] text-muted px-4 py-1">No files changed.</div>
+                      {#if isGraphTreeView}
+                        {@render renderTreeNodes(expandedCommitTree, 0, noActions, undefined, (f: import('../../services/git').GitFileStatus) => openCommitFile(f, commit.hash, commit.parents.split(' ')[0] || null), 'graph')}
+                        {#if expandedCommitFiles.length === 0}
+                          <div class="text-[10px] text-muted px-4 py-1">No files changed.</div>
+                        {/if}
+                      {:else}
+                        {#each expandedCommitFiles as file (file.path)}
+                          {@render fileRow(file, getExpandedFileStatusStyle(file.status), 0, noActions, (f: import('../../services/git').GitFileStatus) => openCommitFile(f, commit.hash, commit.parents.split(' ')[0] || null))}
+                        {/each}
+                        {#if expandedCommitFiles.length === 0}
+                          <div class="text-[10px] text-muted px-4 py-1">No files changed.</div>
+                        {/if}
                       {/if}
                     {/if}
                   </div>

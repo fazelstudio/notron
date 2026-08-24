@@ -27,7 +27,7 @@ No test suite is configured yet. After any change, always run `bun run check` an
 - `src/lib/components/common/` — shared UI primitives: Modal, Tooltip, Select, MultiSelect, DropdownMenu, ToastContainer, VirtualList, MaterialIcon, ...
 - `src/lib/components/explorer/` — FileTree, TreeNode.
 - `src/lib/components/editor/` — Editor (CodeMirror 6 wrapper), SplitEditorPane, SplitView, DiffEditor, MarkdownPreview, ImageViewer, GoToLineDialog, EditorSearchWidget, WelcomeTab.
-- `src/lib/components/panels/` — BottomPanel (integrated terminal — renamed from TerminalPanel), SourceControlPanel, SearchPanel, RunPanel, SettingsPage, CommandPalette, SmartSearchModal, TitleMenuBar, dialogs.
+- `src/lib/components/panels/` — BottomPanel (integrated terminal — renamed from TerminalPanel), SourceControlPanel, SearchPanel, RunPanel, SettingsPage, CommandPalette, TitleMenuBar, dialogs.
 - `src/lib/stores/` — runes stores (`*.svelte.ts`): `editor`, `settings`, `theme`, `terminal`, `ui`, `navigation`, `palette`, `run`, `split`, `gitRepo`, `gitDecoration`.
 - `src/lib/services/` — service layer: `git` (git CLI), `runService` (DAP), `entryPointResolver`.
 - `src/lib/editor/` — CodeMirror 6 module-level extensions shared by editor instances: `breadcrumbs.ts`, `commonExtensions.ts`.

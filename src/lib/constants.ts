@@ -48,6 +48,13 @@ export const GOTO_DISPATCH_MS = 50;
 export const GIT_LOG_LIMIT = 50;
 export const REFRESH_REPO_DEBOUNCE_MS = 300;
 export const GIT_STATUS_DEBOUNCE_MS = 400;
+/** Widths (%) of skeleton shimmer rows in loading states (mirrors real list rows). */
+export const SKELETON_ROW_WIDTHS = [75, 55, 88, 45, 68];
+/** Default number of skeleton rows per mirrored section when no state is known yet. */
+export const SKELETON_DEFAULT_GROUP_ROWS = 4;
+export const SKELETON_DEFAULT_COMMIT_ROWS = 6;
+/** Default changes/graph split ratio (0..1) in the Source Control panel when no per-workspace size is saved. */
+export const SC_SPLIT_DEFAULT = 0.5;
 
 // ── Terminal ──────────────────────────────────────────────────────────────
 export const DEFAULT_TERMINAL_HEIGHT = 250;
@@ -94,6 +101,13 @@ export const RUN_STATUS_MS = 2200;
 
 // ── File explorer ─────────────────────────────────────────────────────────
 export const DEFAULT_EXCLUDE_DIRS = ['node_modules', '.git', 'target', 'dist'];
+
+// ── Search ────────────────────────────────────────────────────────────────
+/** Debounce for global search while typing in the Search panel. */
+export const SEARCH_DEBOUNCE_MS = 300;
+
+/** How long the opened search result stays highlighted in the editor viewport. */
+export const SEARCH_RESULT_HIGHLIGHT_MS = 8000;
 
 /** Generates a reasonably collision-safe id for ephemeral entities (tabs, terminals). */
 export function generateId(prefix: string): string {

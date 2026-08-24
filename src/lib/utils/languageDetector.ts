@@ -1,6 +1,18 @@
 import type { Extension } from '@codemirror/state';
 import { StreamLanguage } from '@codemirror/language';
 
+import { foldInside, foldNodeProp, LRLanguage, LanguageSupport } from '@codemirror/language';
+
+function patchFold(lang: any, nodeMap: any, langName: string) {
+  if (lang.language && lang.language.parser) {
+    const patched = lang.language.parser.configure({
+      props: [foldNodeProp.add(nodeMap)]
+    });
+    return new LanguageSupport(LRLanguage.define({ name: langName, parser: patched }), lang.support || []);
+  }
+  return lang;
+}
+
 export async function getLanguageExtension(filename: string): Promise<Extension> {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
 
@@ -97,6 +109,101 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       return lezer();
     }
 
+
+    case 'astro': {
+      const { astro } = await import('@fazelstudio/codemirror-lang-astro');
+      return astro();
+    }
+    case 'prisma': {
+      const { prisma } = await import('@fazelstudio/codemirror-lang-prisma');
+      return prisma();
+    }
+    case 'bib': {
+      const { bibtex } = await import('@citedrive/codemirror-lang-bibtex');
+      return bibtex();
+    }
+    case 'gs': {
+      const { golfScript } = await import('codemirror-lang-golfscript');
+      return patchFold(golfScript(), { Block: foldInside }, 'golfscript');
+    }
+    case 'dot': case 'gv': {
+      const { dot } = await import('cm-lang-dot');
+      return patchFold(dot(), { GraphBody: foldInside }, 'dot');
+    }
+    case 'hbs': case 'handlebars': {
+      const handlebarsModule = await import('@xiechao/codemirror-lang-handlebars') as any;
+      const handlebars = handlebarsModule.default || handlebarsModule.handlebars;
+      return patchFold(handlebars(), { BlockStatement: foldInside }, 'handlebars');
+    }
+    case 'hcl': case 'tf': case 'tfvars': {
+      const { hcl } = await import('codemirror-lang-hcl');
+      return hcl();
+    }
+    case 'ijs': {
+      const { j } = await import('codemirror-lang-j');
+      return patchFold(j(), { Block: foldInside }, 'j');
+    }
+    case 'janet': {
+      const { janet } = await import('codemirror-lang-janet');
+      return janet();
+    }
+    case 'jl': {
+      const { julia } = await import('@plutojl/lang-julia');
+      return patchFold(julia(), { Block: foldInside, ForStatement: foldInside, FunctionDefinition: foldInside, IfStatement: foldInside }, 'julia');
+    }
+    case 'mustache': {
+      const mustacheModule = await import('@grumptech/lezer-mustache') as any;
+      const mustache = mustacheModule.default || mustacheModule.mustache;
+      return patchFold(mustache(), { Section: foldInside }, 'mustache');
+    }
+    case 'pkl': {
+      const { pkl } = await import('codemirror-lang-pkl');
+      return pkl();
+    }
+    case 'rq': case 'sparql': {
+      const { sparql } = await import('codemirror-lang-sparql');
+      return sparql();
+    }
+    case 'wgsl': {
+      const { wgsl } = await import('@iizukak/codemirror-lang-wgsl');
+      return patchFold(wgsl(), { CompoundStatement: foldInside, StructBodyDeclaration: foldInside }, 'wgsl');
+    }
+    case 'graphql': case 'gql': {
+      const { graphqlLanguage } = await import('cm6-graphql');
+      return new LanguageSupport(graphqlLanguage);
+    }
+    case 'zig': {
+      const { parser } = await import('@ndim/lezer-zig');
+      const patchedParser = parser.configure({ 
+        props: [foldNodeProp.add({ Block: foldInside, ContainerBlock: foldInside, SwitchBlock: foldInside, ErrBlock: foldInside })] 
+      });
+      return new LanguageSupport(LRLanguage.define({ name: 'zig', parser: patchedParser }));
+    }
+    case 'glsl': case 'vert': case 'frag': case 'vs': case 'fs': {
+      const { glsl } = await import('codemirror-lang-glsl');
+      return glsl();
+    }
+    case 'nix': {
+      const { nix } = await import('@replit/codemirror-lang-nix');
+      return nix();
+    }
+    case 'gleam': {
+      const { gleam } = await import('@exercism/codemirror-lang-gleam');
+      return gleam();
+    }
+    case 'csharp': case 'cs': {
+      const { csharp } = await import('@replit/codemirror-lang-csharp');
+      return csharp();
+    }
+    case 'solidity': case 'sol': {
+      const { solidity } = await import('@fazelstudio/codemirror-lang-solidity');
+      return solidity();
+    }
+    case 'clojure': case 'clj': case 'cljs': case 'cljc': case 'edn': {
+      const { clojure } = await import('@nextjournal/lang-clojure');
+      return clojure();
+    }
+  
     // --- Legacy Modes ---
     case 'sh': case 'bash': case 'zsh': case 'fish': {
       const { shell } = await import('@codemirror/legacy-modes/mode/shell');
@@ -138,10 +245,6 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       const { cmake } = await import('@codemirror/legacy-modes/mode/cmake');
       return StreamLanguage.define(cmake);
     }
-    case 'cs': {
-      const { csharp } = await import('@codemirror/legacy-modes/mode/clike');
-      return StreamLanguage.define(csharp);
-    }
     case 'kt': case 'kts': {
       const { kotlin } = await import('@codemirror/legacy-modes/mode/clike');
       return StreamLanguage.define(kotlin);
@@ -174,10 +277,6 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       const { haskell } = await import('@codemirror/legacy-modes/mode/haskell');
       return StreamLanguage.define(haskell);
     }
-    case 'clj': case 'cljs': case 'cljc': case 'edn': {
-      const { clojure } = await import('@codemirror/legacy-modes/mode/clojure');
-      return StreamLanguage.define(clojure);
-    }
     case 'erl': case 'hrl': {
       const { erlang } = await import('@codemirror/legacy-modes/mode/erlang');
       return StreamLanguage.define(erlang);
@@ -186,7 +285,7 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       const { groovy } = await import('@codemirror/legacy-modes/mode/groovy');
       return StreamLanguage.define(groovy);
     }
-    case 'fs': case 'fsi': case 'fsx': {
+    case 'fsi': case 'fsx': {
       const { fSharp } = await import('@codemirror/legacy-modes/mode/mllike');
       return StreamLanguage.define(fSharp);
     }
@@ -217,4 +316,71 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
     default:
       return [];
   }
+}
+
+export function formatLanguageName(lang: string): string {
+  const overrides: Record<string, string> = {
+    javascript: 'JavaScript',
+    typescript: 'TypeScript',
+    cpp: 'C++',
+    csharp: 'C#',
+    fsharp: 'F#',
+    html: 'HTML',
+    css: 'CSS',
+    json: 'JSON',
+    xml: 'XML',
+    sql: 'SQL',
+    php: 'PHP',
+    yaml: 'YAML',
+    toml: 'TOML',
+    markdown: 'Markdown',
+    svelte: 'Svelte',
+    prisma: 'Prisma',
+    astro: 'Astro',
+    vue: 'Vue',
+    dockerfile: 'Dockerfile',
+    powershell: 'PowerShell',
+    'objective-c': 'Objective-C',
+    ocaml: 'OCaml',
+    sass: 'Sass',
+    less: 'Less',
+    go: 'Go',
+    lezer: 'Lezer',
+    elixir: 'Elixir',
+    nix: 'Nix',
+    gleam: 'Gleam',
+    shell: 'Shell Script',
+    ruby: 'Ruby',
+    lua: 'Lua',
+    perl: 'Perl',
+    properties: 'Properties/INI',
+    diff: 'Diff',
+    cmake: 'CMake',
+    solidity: 'Solidity',
+    kotlin: 'Kotlin',
+    clojure: 'Clojure',
+    erlang: 'Erlang',
+    groovy: 'Groovy',
+    nginx: 'Nginx',
+    protobuf: 'Protobuf',
+    pug: 'Pug',
+    stylus: 'Stylus',
+    latex: 'LaTeX',
+    bibtex: 'BibTeX',
+    golfscript: 'GolfScript',
+    dot: 'Graphviz DOT',
+    handlebars: 'Handlebars',
+    hcl: 'HCL / Terraform',
+    j: 'J',
+    janet: 'Janet',
+    julia: 'Julia',
+    mustache: 'Mustache',
+    pkl: 'Pkl',
+    sparql: 'SPARQL',
+    wgsl: 'WGSL',
+    graphql: 'GraphQL',
+    zig: 'Zig',
+    glsl: 'GLSL'
+  };
+  return overrides[lang] || (lang.charAt(0).toUpperCase() + lang.slice(1));
 }

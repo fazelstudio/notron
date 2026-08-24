@@ -25,7 +25,7 @@
         const sep = node.path.includes('\\') ? '\\' : '/';
         const parts = node.path.split(sep); parts.pop();
         const newPath = [...parts, val.trim()].join(sep);
-        await uiStore.withStatus(`Renaming to ${val.trim()}...`, invoke('rename_item', { old_path: node.path, new_path: newPath }), 500);
+        await uiStore.withStatus(`Renaming to ${val.trim()}...`, invoke('rename_item', { oldPath: node.path, newPath }), 500);
         uiStore.triggerExplorerRefresh();
         uiStore.setRenamingItem(null);
       } catch (err) { alert(err); }

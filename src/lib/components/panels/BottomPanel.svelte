@@ -3,7 +3,6 @@
   import { terminalStore, type TerminalType } from '../../stores/terminal';
   import { uiStore } from '../../stores/ui';
   import { editorStore } from '../../stores/editor';
-  import { invoke } from '@tauri-apps/api/core';
   import TerminalInstance from './TerminalInstance.svelte';
   import Tooltip from '../common/Tooltip.svelte';
   import DropdownMenu from '../common/DropdownMenu.svelte';
@@ -48,27 +47,12 @@
     try {
       const root = uiStore.getSnapshot().explorerRoot || '';
       const fullPath = `${root}\\${filePath.replace(/\//g, '\\')}`;
-      const name = filePath.split(/[\/\\]/).pop() || 'Unknown';
-      let content = null;
-      
-      const tabs = editorStore.getTabsSnapshot();
-      let tabExists = tabs.some((t: any) => t.path === fullPath);
 
-      if (!tabExists) {
-        const result: any = await invoke('open_file', { path: fullPath });
-        content = result.content;
-      }
-      
-      const language = await invoke<string>('detect_language', { path: fullPath }).catch(() => 'plaintext');
-      
-      if (!tabExists) {
-        editorStore.addTab({ id: fullPath, path: fullPath, name, content, language, isPreview: true });
-      } else {
-        editorStore.setActiveTab(fullPath);
-      }
-      
+      // Route through the central open handler so the tab lands in the active
+      // pane exactly like every other open entry point.
+      window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: fullPath } }));
+
       setTimeout(() => {
-        editorStore.updateCursor(fullPath, line, col, col);
         window.dispatchEvent(new CustomEvent('editor:action', {
           detail: { action: 'goto', line, column: col, endColumn: col }
         }));

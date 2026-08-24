@@ -93,6 +93,12 @@ function findLeafNodeId(node: SplitNode, paneId: string): string | null {
 function createSplitStore() {
   const store = writable<SplitState>(createInitialState());
 
+  /** Reset the split tree back to a single empty pane (used on workspace
+   *  switch so stale panes from the previous workspace never linger). */
+  function resetToSinglePane() {
+    store.set(createInitialState());
+  }
+
   function splitPane(targetPaneId: string, direction: 'up' | 'down' | 'left' | 'right') {
     store.update((state) => {
       const targetPane = state.panes[targetPaneId];
@@ -237,6 +243,49 @@ function createSplitStore() {
     });
   }
 
+  /** Close a tab from every pane (used when a file disappears from disk). */
+  function closeTabInAllPanes(tabId: string) {
+    store.update((state) => {
+      const newPanes = { ...state.panes };
+      for (const [paneId, pane] of Object.entries(newPanes)) {
+        if (!pane.tabs.some((t) => t.id === tabId)) continue;
+        const newTabs = pane.tabs.filter((t) => t.id !== tabId);
+        newPanes[paneId] = {
+          ...pane,
+          tabs: newTabs,
+          activeTabId: pane.activeTabId === tabId
+            ? (newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null)
+            : pane.activeTabId,
+        };
+      }
+      return { ...state, panes: newPanes };
+    });
+  }
+
+  /**
+   * Follow a disk rename inside every pane. When `oldPath` is a directory,
+   * every tab nested below it is updated too (prefix-aware).
+   */
+  function updateTabPathInAllPanes(oldPath: string, newPath: string) {
+    store.update((state) => {
+      const newPanes = { ...state.panes };
+      for (const [paneId, pane] of Object.entries(newPanes)) {
+        let changed = false;
+        const newTabs = pane.tabs.map((t) => {
+          const isUnderOld = t.path === oldPath
+            || t.path.startsWith(oldPath + '/')
+            || t.path.startsWith(oldPath + '\\');
+          if (!isUnderOld) return t;
+          changed = true;
+          const newTabPath = t.path === oldPath ? newPath : newPath + t.path.slice(oldPath.length);
+          return { ...t, path: newTabPath, name: newTabPath.split(/[/\\]/).pop() || t.name };
+        });
+        if (changed) newPanes[paneId] = { ...pane, tabs: newTabs };
+      }
+      return { ...state, panes: newPanes };
+    });
+  }
+
   function setActivePaneTab(paneId: string, tabId: string) {
     store.update((state) => {
       const pane = state.panes[paneId];
@@ -275,6 +324,16 @@ function createSplitStore() {
   }
 
   function updateSplitRatio(nodeId: string, ratio: number) {
+    // Guard: a stale drag handle from an unmounted pane must not resurrect
+    // a split node whose pane no longer exists.
+    function find(node: SplitNode): boolean {
+      if (node.id === nodeId) return true;
+      if (node.type === 'split' && node.children) {
+        return find(node.children[0]) || find(node.children[1]);
+      }
+      return false;
+    }
+    if (!find(getSnapshot().rootNode)) return;
     store.update((state) => {
       function updateRatio(node: SplitNode): SplitNode {
         if (node.id === nodeId) return { ...node, splitRatio: ratio };
@@ -303,12 +362,15 @@ function createSplitStore() {
   return {
     subscribe: store.subscribe,
     setState,
+    resetToSinglePane,
     splitPane,
     closePane: closePaneById,
     setActivePane,
     addTabToPane,
     replaceTabInPane,
     closeTabInPane,
+    closeTabInAllPanes,
+    updateTabPathInAllPanes,
     setActivePaneTab,
     closeAllTabsInPane,
     updateTabInAllPanes,

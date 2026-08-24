@@ -32,14 +32,19 @@ Thumbs.db
 
 # ── AI Assistant working files (not for source control) ──
 .kilo/
+.antigravity/
+.cline/
 
 # ── Project reports & module scratch space ──
 reports/
 modules/
+references/
+
+# ── Testing ──
+test/
 
 # ── Environment / local config ──
 .env
 .env.*
 !.env.example
 *.local
-

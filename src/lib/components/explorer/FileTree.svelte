@@ -159,6 +159,9 @@
   import { flattenTree, sortNodes } from '../../utils/treeFlattener';
   import TreeNode from './TreeNode.svelte';
   import Tooltip from '../common/Tooltip.svelte';
+  import { settingsStore } from '../../stores/settings.svelte';
+  import { getFileIcon } from '../../utils/fileIcons';
+  import MaterialIcon from '../common/MaterialIcon.svelte';
 
   interface DirBatchEntry {
     path: string;
@@ -978,7 +981,7 @@
 
     const destPath = `${parentPath}/${newName}`;
     try {
-      await invoke('copy_item', { sourcePath: srcPath, destPath });
+      await invoke('copy_item', { srcPath, dstPath: destPath });
       invalidateDirCache(parentPath);
       nodeCacheVersion++;
 
@@ -1119,7 +1122,8 @@
     try {
       await invoke('delete_items', { paths: targets });
       for (const p of targets) {
-        editorStore.closeTab(p);
+        // Close open tabs (clean) or mark dirty tabs as deleted — both stores.
+        editorStore.closeTabsOfDeletedPath(p);
         const parentPath = getParentPath(p);
         removeFromDirCache(parentPath, p);
         if (parentPath === rootPath) {
@@ -1133,10 +1137,6 @@
       if (newClipboard.length !== clipboardPaths.length) {
         clipboardPaths = newClipboard;
         if (clipboardPaths.length === 0) clipboardOp = null;
-      }
-
-      for (const p of targets) {
-        editorStore.markTabDeleted(p);
       }
 
       selectedPaths   = new Set();
@@ -1229,7 +1229,7 @@
     renamingPath = null;
 
     try {
-      await invoke('rename_item', { old_path: oldPath, new_path: newPath });
+      await invoke('rename_item', { oldPath, newPath });
 
       renameDirCacheKey(oldPath, newPath);
       updateExpandedPathsAfterRename(oldPath, newPath);
@@ -1906,11 +1906,16 @@
             style="padding-left: {node.depth * 12 + 8}px; height: 26px;"
           >
             <span class="w-3.5 shrink-0 inline-block"></span>
-            <span class="shrink-0 text-accent">
-              {#if node.creating_type === 'folder'}
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
-              {:else}
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="shrink-0 flex items-center text-accent">
+              {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
+                {#if node.creating_type === 'folder'}
+                  <Folder size={14} />
+                {:else}
+                  {@const Icon = getFileIcon(creatingValue || 'new_file')}
+                  <Icon size={14} />
+                {/if}
+              {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
+                <MaterialIcon name={creatingValue || (node.creating_type === 'folder' ? 'new_folder' : 'new_file')} isDir={node.creating_type === 'folder'} size={14} />
               {/if}
             </span>
             <input
@@ -1938,11 +1943,16 @@
             style="padding-left: {node.depth * 12 + 8}px; height: 26px;"
           >
             <span class="w-3.5 shrink-0 inline-block"></span>
-            <span class="shrink-0 text-accent">
-              {#if node.is_dir}
-                <Folder size={14} />
-              {:else}
-                <File size={14} />
+            <span class="shrink-0 flex items-center text-accent">
+              {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
+                {#if node.is_dir}
+                  <Folder size={14} />
+                {:else}
+                  {@const Icon = getFileIcon(renameValue || node.name)}
+                  <Icon size={14} />
+                {/if}
+              {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
+                <MaterialIcon name={renameValue || node.name} isDir={node.is_dir} size={14} />
               {/if}
             </span>
             <input

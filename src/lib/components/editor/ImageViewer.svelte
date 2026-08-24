@@ -1,7 +1,9 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { getGitFileBinary } from '../../services/git';
+  import { dirname } from '@tauri-apps/api/path';
   
-  let { filePath }: { filePath: string } = $props();
+  let { filePath, gitRevision }: { filePath: string; gitRevision?: string } = $props();
 
   let src = $state('');
   let zoom = $state(1);
@@ -13,9 +15,19 @@
     let url: string | null = null;
     if (filePath) {
       loading = true;
-      invoke<number[]>('read_file_binary', { path: filePath })
+      
+      const fetchBinary = async () => {
+        if (gitRevision && gitRevision !== 'working-tree') {
+          const dir = await dirname(filePath);
+          return await getGitFileBinary(dir, filePath, gitRevision);
+        }
+        return await invoke<number[]>('read_file_binary', { path: filePath });
+      };
+
+      fetchBinary()
         .then((bytes) => {
           if (cancelled) return;
+          if (!bytes) throw new Error('No bytes returned');
           const uint8Array = new Uint8Array(bytes);
           const ext = filePath.split('.').pop()?.toLowerCase();
           let mimeType = 'image/png';

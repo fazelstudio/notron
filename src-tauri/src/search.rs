@@ -264,11 +264,9 @@ pub async fn search_files_stream(
         let send_thread = thread::spawn(move || {
             let mut batch = Vec::new();
             let mut last_send = std::time::Instant::now();
-            let mut cancelled = false;
 
             while let Ok(item) = rx.recv() {
                 if cancel_flag_thread.load(Ordering::Relaxed) {
-                    cancelled = true;
                     break;
                 }
                 batch.push(item);
@@ -280,12 +278,14 @@ pub async fn search_files_stream(
                     last_send = std::time::Instant::now();
                 }
             }
-            if !cancelled {
-                let mut meta = HashMap::new();
-                meta.insert("files_scanned".to_string(), files_scanned_thread.load(Ordering::Relaxed));
-                meta.insert("matches_found".to_string(), matches_total_thread.load(Ordering::Relaxed));
-                let _ = channel.send(StreamedBatch::finish(batch, meta));
-            }
+            // Always report the end of the stream — even after a cancellation.
+            // Without the `done` frame the frontend would never settle its
+            // "Searching…" state (stale batches are dropped by the caller via
+            // its cancellation-token check).
+            let mut meta = HashMap::new();
+            meta.insert("files_scanned".to_string(), files_scanned_thread.load(Ordering::Relaxed));
+            meta.insert("matches_found".to_string(), matches_total_thread.load(Ordering::Relaxed));
+            let _ = channel.send(StreamedBatch::finish(batch, meta));
         });
 
         let mut walker =

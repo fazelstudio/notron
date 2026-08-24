@@ -1,7 +1,8 @@
 <script lang="ts">
   import { editorStore } from '../../stores/editor';
+  import { splitStore } from '../../stores/split';
   import { uiStore } from '../../stores/ui';
-    import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { open, save } from '@tauri-apps/plugin-dialog';
   import { invoke } from '@tauri-apps/api/core';
   import { getHumanReadableError } from '../../utils/error';
@@ -22,8 +23,13 @@
     while (tabsSnapshot.some((t: any) => t.path === `Untitled-${count}`)) count++;
     const name = `Untitled-${count}`;
     const id = `tab-${Date.now()}`;
-    editorStore.addTab({ id, path: name, name, content: '', language: 'plaintext', isPreview: false });
+    const tab = { id, path: name, name, content: '', language: 'plaintext', isPreview: false };
+    editorStore.addTab(tab);
     editorStore.setActiveTab(id);
+    const activePaneId = splitStore.getSnapshot().activePaneId;
+    if (activePaneId) {
+      splitStore.addTabToPane(activePaneId, { ...tab, originalContent: '', isModified: false, lastAccessed: Date.now(), status: 'active' });
+    }
     closeAll();
   }
 
@@ -40,30 +46,7 @@
     try {
       const selected = await open({ multiple: false });
       if (selected && typeof selected === 'string') {
-        const fileName = selected.split(/[/\\]/).pop() || 'Unknown';
-        let content = '';
-        const isImage = /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(fileName);
-        let isLargeFile = false;
-        let isPreview = false;
-        if (!isImage) {
-          try {
-            content = await invoke<string>('read_file_text', { path: selected });
-          } catch (e) {
-            if (String(e) === '__BINARY__') content = '';
-            else if (String(e) === '__LARGE_FILE__') {
-              const chunked = await invoke<any>('read_file_chunked', { path: selected });
-              content = chunked.content;
-              isLargeFile = true;
-              isPreview = true;
-            } else throw e;
-          }
-        }
-        editorStore.addTab({
-          id: `tab-${Date.now()}`, path: selected, name: fileName, content,
-          language: isImage ? 'image' : await invoke<string>('detect_language', { path: selected }),
-          isPreview,
-          isLargeFile
-        });
+        window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: selected } }));
       }
     } catch (err) { console.error(err); }
     closeAll();
@@ -95,8 +78,11 @@
         const fileName = selected.split(/[/\\]/).pop() || 'Unknown';
         try {
           await invoke('save_file', { path: selected, content: activeTab.content });
-          editorStore.closeTab(activeTab.id);
-          editorStore.addTab({ ...activeTab, id: selected, path: selected, name: fileName });
+          // Keep the same tab id — update path/name in BOTH stores so the
+          // pane tab bar follows the save.
+          editorStore.updateTab(activeTab.id, { path: selected, name: fileName });
+          splitStore.updateTabInAllPanes({ id: activeTab.id, path: selected, name: fileName });
+          editorStore.markSaved(activeTab.id);
         } catch (err) {
           console.error(err);
           uiStore.addToast('Save Failed', 'alert', getHumanReadableError(err));
@@ -122,8 +108,11 @@
       try {
         await invoke('save_file', { path: selected, content: activeTab.content });
         const fileName = selected.split(/[/\\]/).pop() || 'Unknown';
-        editorStore.closeTab(activeTab.id);
-        editorStore.addTab({ ...activeTab, id: `tab-${Date.now()}`, path: selected, name: fileName });
+        // Keep the same tab id — update path/name in BOTH stores so the pane
+        // tab bar follows the save.
+        editorStore.updateTab(activeTab.id, { path: selected, name: fileName });
+        splitStore.updateTabInAllPanes({ id: activeTab.id, path: selected, name: fileName });
+        editorStore.markSaved(activeTab.id);
         uiStore.addToast('Saved manually', 'success');
       } catch (err) {
         console.error(err);
@@ -225,7 +214,6 @@
         { label: 'Command Palette', action: () => { window.dispatchEvent(new CustomEvent('open-command-palette')); closeAll(); }, sep: true, shortcut: 'Ctrl+Shift+P' },
         { label: 'Explorer', action: openExplorer, shortcut: 'Ctrl+Shift+E' },
         { label: 'Search', action: openSearch, shortcut: 'Ctrl+Shift+F' },
-        { label: 'Smart Search', action: () => { window.dispatchEvent(new CustomEvent('open-smart-search')); closeAll(); }, sep: true, shortcut: 'Ctrl+P' },
         { label: 'Terminal', action: () => {
             if ($terminalStore.terminals.length === 0) {
               const cwd = uiStore.getSnapshot().explorerRoot || '';

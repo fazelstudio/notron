@@ -16,6 +16,7 @@ import {
 } from '../constants';
 import { isImageFile } from '../utils/path';
 import { buildReplaceRegex, applyReplacement, type ReplaceMatchOptions } from '../utils/replace';
+import { splitStore } from './split';
 
 export interface ClosedTabEntry {
   path: string;
@@ -45,8 +46,22 @@ export interface EditorTab {
   currentHistoryIndex?: number;
   isDiff?: boolean;
   diffOriginalContent?: string | null;
+  /** Diff tab extras (labels + right-side editability) — mirrors VSCode's
+   *  "Working Tree" (editable right side) vs commit-compare (read-only) tabs. */
+  diffOriginalLabel?: string;
+  diffCurrentLabel?: string;
+  diffOriginalRevision?: string;
+  diffCurrentRevision?: string;
+  gitRevision?: string;
+  diffEditable?: boolean;
+  /** Plain (non-diff) tab opened read-only (e.g. a file at a fixed commit). */
+  readOnly?: boolean;
   svgViewMode?: 'image' | 'code' | 'split';
   mdViewMode?: 'preview' | 'code' | 'split';
+  /** When true, MD/SVG preview routing is suppressed — the editor always shows
+   *  raw code. Used for SC history tabs (commit snapshots, diff views) where
+   *  the goal is code review, not rendered preview. */
+  noPreview?: boolean;
 }
 
 export type TabInput = {
@@ -62,7 +77,16 @@ export type TabInput = {
   undoHistory?: any;
   isDiff?: boolean;
   diffOriginalContent?: string | null;
+  diffOriginalLabel?: string;
+  diffCurrentLabel?: string;
+  diffOriginalRevision?: string;
+  diffCurrentRevision?: string;
+  gitRevision?: string;
+  diffEditable?: boolean;
+  readOnly?: boolean;
   svgViewMode?: 'image' | 'code' | 'split';
+  /** Suppress MD/SVG preview routing — show raw code only. */
+  noPreview?: boolean;
 };
 
 // Cursor/scroll state lives in separate Maps (not in the tabs array) so the
@@ -161,6 +185,33 @@ function createEditorStore() {
     });
   }
 
+  /** Close a tab from every split pane AND the editor store (single source of
+   *  truth — the pane tab bar renders from splitStore, the editor state from
+   *  editorStore, so both must be kept in sync when a tab is removed). */
+  function closeTabEverywhere(id: string) {
+    splitStore.closeTabInAllPanes(id);
+    closeTab(id);
+  }
+
+  /** Close tabs for a deleted file/folder (exact match or nested under a
+   *  deleted directory). Clean tabs are closed everywhere; dirty tabs are kept
+   *  open and marked `deleted` so unsaved edits can still be recovered — same
+   *  behavior as VSCode. */
+  function closeTabsOfDeletedPath(path: string) {
+    const affected = getTabsSnapshot().filter((t) =>
+      t.path === path
+      || t.path.startsWith(path + '/')
+      || t.path.startsWith(path + '\\')
+    );
+    for (const tab of affected) {
+      if (tab.isModified) {
+        markTabDeleted(tab.id);
+      } else {
+        closeTabEverywhere(tab.id);
+      }
+    }
+  }
+
   function setActiveTab(id: string) {
     activeTabId.set(id);
     tabs.update((state) =>
@@ -173,6 +224,10 @@ function createEditorStore() {
   }
 
   function setInitialContent(id: string, content: string) {
+    // Notify a live CodeMirror view BEFORE the store update so it can compare
+    // against the pre-update buffer and avoid clobbering in-flight user edits.
+    window.dispatchEvent(new CustomEvent('editor:sync-content', { detail: { tabId: id, content } }));
+
     tabs.update((state) =>
       state.map((t) => {
         if (t.id === id) {
@@ -259,6 +314,7 @@ function createEditorStore() {
         return t;
       })
     );
+    splitStore.updateTabInAllPanes({ id, status: 'deleted' });
   }
 
   function markTabConflict(id: string) {
@@ -308,6 +364,7 @@ function createEditorStore() {
         return t;
       })
     );
+    splitStore.updateTabInAllPanes({ id, content: null, originalContent: null, status: 'suspended', undoHistory: undefined });
   }
 
   /**
@@ -316,6 +373,8 @@ function createEditorStore() {
    * tabs (or any tab idle for longer than SUSPEND_TAB_AFTER_MS).
    */
   function enforceMemoryLimit() {
+    const suspended: Array<{ id: string; content: null; originalContent: null; status: 'suspended'; undoHistory: undefined }> = [];
+
     tabs.update((state) => {
       const activeId = getActiveTabIdSnapshot();
       const now = Date.now();
@@ -332,6 +391,7 @@ function createEditorStore() {
         const isOverLimit = inMemoryCount > MAX_IN_MEMORY_TABS;
 
         if (isIdleTooLong || isOverLimit) {
+          suspended.push({ id: tab.id, content: null, originalContent: null, status: 'suspended', undoHistory: undefined });
           state = state.map((t) =>
             t.id === tab.id
               ? { ...t, content: null, originalContent: null, status: 'suspended' as const, undoHistory: undefined }
@@ -345,6 +405,12 @@ function createEditorStore() {
 
       return state;
     });
+
+    // Keep the split panes in sync so the pane tab bar/editor also drop the
+    // evicted buffer.
+    for (const s of suspended) {
+      splitStore.updateTabInAllPanes(s);
+    }
   }
 
   function scheduleAutoSave(tabId: string) {
@@ -422,6 +488,11 @@ function createEditorStore() {
     if (!matches || matches.length === 0) return 0;
     const newContent = tab.content.replace(re, (m) => applyReplacement(m, re, opts));
     if (newContent === tab.content) return 0;
+    // Notify any LIVE CodeMirror view BEFORE the store update so a mounted pane
+    // showing this tab renders the replaced text immediately (same contract as
+    // setInitialContent — it bails when the view has in-flight, not-yet-extracted
+    // user edits, in which case the debounced extractor wins).
+    window.dispatchEvent(new CustomEvent('editor:sync-content', { detail: { tabId: tab.id, content: newContent } }));
     updateContent(tab.id, newContent);
     return matches.length;
   }
@@ -457,26 +528,41 @@ function createEditorStore() {
   }
 
   function updateTabPath(oldPath: string, newPath: string) {
-    // Migrate cursor/scroll data
-    if (cursorPositions.has(oldPath)) {
-      cursorPositions.set(newPath, cursorPositions.get(oldPath)!);
-      cursorPositions.delete(oldPath);
-    }
-    if (scrollPositions.has(oldPath)) {
-      scrollPositions.set(newPath, scrollPositions.get(oldPath)!);
-      scrollPositions.delete(oldPath);
+    let renamed: Array<{ id: string; nextId: string; path: string }> = [];
+    tabs.update((state) => {
+      renamed = [];
+      const next = state.map((t) => {
+        const isUnderOld = t.path === oldPath
+          || t.path.startsWith(oldPath + '/')
+          || t.path.startsWith(oldPath + '\\');
+        if (!isUnderOld) return t;
+        const newTabPath = t.path === oldPath ? newPath : newPath + t.path.slice(oldPath.length);
+        // Tabs created with `id === path` (e.g. palette/session restores) must
+        // migrate their id with the rename; generated ids stay stable.
+        const nextId = t.id === t.path ? newTabPath : t.id;
+        renamed.push({ id: t.id, nextId, path: newTabPath });
+        return { ...t, id: nextId, path: newTabPath, name: newTabPath.split(/[/\\]/).pop() || t.name };
+      });
+      return next;
+    });
+
+    // Migrate id-keyed cursor/scroll state and the active-tab pointer.
+    for (const r of renamed) {
+      if (r.id === r.nextId) continue;
+      const cur = cursorPositions.get(r.id);
+      if (cur) {
+        cursorPositions.set(r.nextId, cur);
+        cursorPositions.delete(r.id);
+      }
+      const scr = scrollPositions.get(r.id);
+      if (scr) {
+        scrollPositions.set(r.nextId, scr);
+        scrollPositions.delete(r.id);
+      }
+      activeTabId.update((current) => (current === r.id ? r.nextId : current));
     }
 
-    tabs.update((state) =>
-      state.map((t) => {
-        if (t.path === oldPath) {
-          const name = newPath.split(/[/\\]/).pop() || t.name;
-          return { ...t, id: newPath, path: newPath, name };
-        }
-        return t;
-      })
-    );
-    activeTabId.update((current) => (current === oldPath ? newPath : current));
+    splitStore.updateTabPathInAllPanes(oldPath, newPath);
   }
 
   async function reopenClosedTab() {
@@ -541,6 +627,8 @@ function createEditorStore() {
     cursorSignal: { subscribe: cursorSignal.subscribe },
     addTab,
     closeTab,
+    closeTabEverywhere,
+    closeTabsOfDeletedPath,
     setActiveTab,
     setInitialContent,
     updateContent,

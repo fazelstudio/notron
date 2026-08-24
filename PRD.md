@@ -120,8 +120,8 @@ src/lib/components/editor/       — editor & tab surfaces (Editor, SplitEditorP
                                    DiffEditor, MarkdownPreview, ImageViewer, GoToLineDialog,
                                    EditorSearchWidget, WelcomeTab)
 src/lib/components/panels/       — panels & dialogs (BottomPanel/Terminal, SourceControlPanel,
-                                   SearchPanel, RunPanel, CommandPalette, SmartSearchModal,
-                                   SettingsPage, TitleMenuBar, ...)
+                                    SearchPanel, RunPanel, CommandPalette,
+                                    SettingsPage, TitleMenuBar, ...)
 src/lib/stores/                  — reactive stores (runes): editor, settings.svelte.ts, theme,
                                    terminal, ui, navigation, palette, run, split, gitRepo,
                                    gitDecoration
@@ -167,17 +167,7 @@ src/lib/utils/                   — pure helpers: path, replace, fileIcons, git
   hydration in a single IPC round-trip.
 - `src-tauri/src/discord.rs` — Discord Rich Presence integration.
 
-## 7. Development Roadmap
-
-- [x] Core editor, file tree, global search, and ignore rules.
-- [x] Integrated terminal.
-- [x] Git source control and Run/Debug (DAP).
-- [ ] Extension/plugin system (basic).
-- [ ] Full Git integration enhancements (branching, merge, rebase).
-- [ ] Collaborative editing via WebSockets.
-- [ ] Symbol Engine accuracy improvements using LSP (Language Server Protocol).
-
-## 8. Success Metrics
+## 7. Success Metrics
 
 - Startup time under 2 seconds on typical hardware.
 - Memory usage below 200MB during standard editing sessions.

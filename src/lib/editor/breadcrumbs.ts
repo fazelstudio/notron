@@ -1,3 +1,4 @@
+import { registerLanguageMapping } from '@fazelstudio/codemirror-breadcrumbs';
 /**
  * Breadcrumb bar top-segment extension for the editor: theme + icon sync.
  * The breadcrumbs plugin renders its own built-in icons; this module swaps
@@ -207,4 +208,30 @@ export const notronBreadcrumbsTheme = EditorView.theme({
   '.cm-breadcrumbs-kind-block': { color: 'var(--text-muted)' },
   '.cm-breadcrumbs-kind-tag': { color: 'var(--accent)' },
   '.cm-breadcrumbs-kind-other': { color: 'var(--text-muted)' }
+});
+
+// Community Language Mappings
+registerLanguageMapping({
+  languageName: 'clojure',
+  nodeHandlers: {
+    'List': {
+      kind: 'function',
+      extractLabel: (node: any, state: any) => {
+        let first = node.firstChild;
+        while (first && (first.name === '(' || first.name === 'Metadata')) {
+          first = first.nextSibling;
+        }
+        if (first && first.name === 'DefLike') {
+          let varName = first.nextSibling;
+          while (varName && varName.name !== 'VarName' && varName.name !== 'Symbol') {
+            varName = varName.nextSibling;
+          }
+          if (varName) {
+            return state.sliceDoc(varName.from, varName.to);
+          }
+        }
+        return null;
+      }
+    }
+  }
 });

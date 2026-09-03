@@ -10,7 +10,6 @@
   import { themeStore } from './lib/stores/theme';
   import FileTree from './lib/components/explorer/FileTree.svelte';
   import Tooltip from './lib/components/common/Tooltip.svelte';
-  import { preloadMaterialIcons } from './lib/utils/materialIconRenderer.svelte';
   import TitleMenuBar from './lib/components/panels/TitleMenuBar.svelte';
   import CloseTabDialog from './lib/components/panels/CloseTabDialog.svelte';
   import WelcomeTab from './lib/components/editor/WelcomeTab.svelte';
@@ -23,7 +22,7 @@
   import SplitView from './lib/components/editor/SplitView.svelte';
   import { terminalStore } from './lib/stores/terminal';
   import { paletteStore, type PaletteItem } from './lib/stores/palette';
-  import { navigationStore } from './lib/stores/navigation';
+  import { navigationStore, canGoBack, canGoForward } from './lib/stores/navigation';
   import { gitDecorationStore } from './lib/stores/gitDecoration';
   import { gitRepoStore } from './lib/stores/gitRepo';
   import { sourceControlStore } from './lib/stores/sourceControl';
@@ -38,7 +37,11 @@
     generateId,
   } from './lib/constants';
   import { formatLanguageName } from './lib/utils/languageDetector';
+  import { createCancelableLoader } from './lib/utils/cancelableLoader';
   import { onMount } from 'svelte';
+
+  /** Prevents race conditions when opening files in quick succession (ASYNC-003). */
+  const fileOpenLoader = createCancelableLoader<any>();
 
   const tabs = editorStore.tabs;
   const activeTabId = editorStore.activeTabId;
@@ -62,7 +65,7 @@
   let isSettingsOpen = $state(false);
   let isGoToLineOpen = $state(false);
   let appReady = $state(false);
-  let currentCursorPos = $state('Ln 1, Col 1');
+  let currentCursorPos = $state('');
   let isMaximized = $state(false);
 
   let CommandPaletteComponent = $state<any>(null);
@@ -103,19 +106,40 @@
     return () => { unlisten.then((fn) => fn()).catch(() => {}); };
   });
 
-  // Record navigation history when active tab changes
+  // Record navigation history when active tab changes — but only when the
+  // tab switch is user-initiated.  navigateBack / navigateForward set a
+  // "navigating" flag so the programmatic tab switch is NOT double-recorded.
   let lastActiveTabId = $state<string | null>(null);
   $effect(() => {
     const tabId = $activeTabId;
     if (!tabId || tabId === lastActiveTabId) return;
+    if (navigationStore.isNavigating()) {
+      lastActiveTabId = tabId;
+      return;
+    }
+
+    // Record OLD tab position before switching (NAV-002)
+    if (lastActiveTabId) {
+      const oldTab = $tabs.find((t: any) => t.id === lastActiveTabId);
+      if (oldTab && oldTab.path && !oldTab.path.startsWith('Untitled') && oldTab.language !== 'welcome' && oldTab.language !== 'settings') {
+        const oldCursor = editorStore.getCursor(lastActiveTabId);
+        navigationStore.recordNavigation(
+          oldTab.path,
+          oldCursor?.line || 1,
+          oldCursor?.column || 1
+        );
+      }
+    }
+
+    // Record NEW tab position
     const tab = $tabs.find((t: any) => t.id === tabId);
     if (tab && tab.path && !tab.path.startsWith('Untitled') && tab.language !== 'welcome' && tab.language !== 'settings') {
       const cursor = editorStore.getCursor(tabId);
-      navigationStore.recordNavigation({
-        path: tab.path,
-        line: cursor?.line || 1,
-        col: cursor?.column || 1
-      });
+      navigationStore.recordNavigation(
+        tab.path,
+        cursor?.line || 1,
+        cursor?.column || 1
+      );
     }
     lastActiveTabId = tabId;
   });
@@ -157,23 +181,14 @@
     return () => { unlisten.then((fn) => fn()).catch(() => {}); };
   });
 
-  // Sync settings theme to themeStore
   $effect(() => {
     if (settingsStore.effectiveSettings.theme) {
       themeStore.setTheme(settingsStore.effectiveSettings.theme);
     }
   });
 
-  // Warm the material icon cache as soon as the material theme is active, so
-  // first renders are synchronous (no <img> load flash).
-  let prevIconTheme = $state(settingsStore.effectiveSettings.icon_theme);
-  $effect(() => {
-    const t = settingsStore.effectiveSettings.icon_theme;
-    if (t === 'material' && prevIconTheme !== 'material') {
-      preloadMaterialIcons();
-    }
-    prevIconTheme = t;
-  });
+  // Material icons are bundled inline (see materialIconAssets.ts), so no
+  // cache warm-up is needed — first renders are synchronous by design.
 
   // Lazy load components only when needed (Bagian 17.1)
   $effect(() => {
@@ -234,6 +249,7 @@
       const path = (e as CustomEvent).detail?.path;
       if (path) {
         await saveWorkspaceSession();
+        navigationStore.reset();
         uiStore.setExplorerRoot(path);
       }
     };
@@ -254,7 +270,6 @@
     window.addEventListener('request-open-file-split', async (e: Event) => {
       const path = (e as CustomEvent).detail?.path;
       if (path) {
-        // Split right and then open
         const snap = splitStore.getSnapshot();
         const activeId = snap.activePaneId;
         if (activeId) splitStore.splitPane(activeId, 'right');
@@ -316,11 +331,14 @@
 
 
   $effect(() => {
+    $cursorSignal;
     if (activeTab) {
       const cursor = editorStore.getCursor(activeTab.id);
       currentCursorPos = cursor
         ? `Ln ${cursor.line}, Col ${cursor.column}`
-        : 'Ln 1, Col 1';
+        : '';
+    } else {
+      currentCursorPos = '';
     }
   });
 
@@ -339,9 +357,9 @@
       const termVal = terminalStore.getSnapshot();
 
       const validTabs = tabsSnapshot.filter((t: any) => 
-        t.path.startsWith('Untitled') || 
-        t.language === 'welcome' ||
-        t.path.toLowerCase().startsWith(explorerRoot.toLowerCase())
+        t.language !== 'welcome' &&
+        (t.path.startsWith('Untitled') || 
+        t.path.toLowerCase().startsWith(explorerRoot.toLowerCase()))
       );
       const validTabIds = new Set(validTabs.map((t: any) => t.id));
       let activeTabId = editorStore.getActiveTabIdSnapshot();
@@ -522,7 +540,6 @@
     // layout must not leak into the new workspace.
     splitStore.resetToSinglePane();
 
-    // Apply layout overrides from session
     if (parsed.sidebarWidth !== undefined) uiStore.setSidebarWidth(parsed.sidebarWidth);
     if (parsed.isSidebarOpen !== undefined) uiStore.setSidebarOpen(parsed.isSidebarOpen);
     if (parsed.expandedPaths !== undefined) uiStore.setExpandedPaths(parsed.expandedPaths);
@@ -531,7 +548,6 @@
     if (parsed.searchQuery !== undefined) uiStore.setSearchQuery(parsed.searchQuery);
     if (parsed.replaceQuery !== undefined) uiStore.setReplaceQuery(parsed.replaceQuery);
 
-    // Apply terminal state
     terminalStore.setTerminals(parsed.terminals || [], parsed.activeTerminalId || null);
     if (parsed.terminalMaximized !== undefined) terminalStore.setMaximize(parsed.terminalMaximized);
     if (parsed.terminalHeight !== undefined) terminalStore.setHeight(parsed.terminalHeight);
@@ -582,7 +598,6 @@
       });
     }
 
-    // Restore cursor/scroll positions
     const cursorStr = stateMap.get('cursor_scroll');
     if (cursorStr) {
       try {
@@ -640,7 +655,6 @@
         }
       }
 
-      // Apply session state (tabs, cursors)
       if (startupState.session_pairs && startupState.session_pairs.length > 0) {
         const stateMap = new Map<string, string>(startupState.session_pairs);
         const sessionStr = stateMap.get('session');
@@ -705,7 +719,7 @@
               const existingTab = editorStore.getTabsSnapshot().find((t: any) => t.id === id);
               if (!existingTab) {
                 editorStore.addTab({
-                  id, path: snap.path, name, content: snap.content, language: 'plaintext', isPreview: false
+                  id, path: snap.path, name, content: snap.content, language: 'plaintext', languageDetected: false, isPreview: false
                 });
               } else {
                 editorStore.setInitialContent(id, snap.content);
@@ -719,7 +733,6 @@
           }
         } catch(e) {}
       }
-      // Set flag to true to indicate running state
       await invoke('set_crash_flag', { value: true });
     } catch (e) {
       console.error('Failed to check/set crash flag', e);
@@ -750,12 +763,6 @@
         ensurePaletteLoaded();
       }
     });
-    // Preload material icon SVGs so first renders are instant (no <img> flash)
-    idle(() => {
-      if (settingsStore.effectiveSettings.icon_theme === 'material') {
-        preloadMaterialIcons();
-      }
-    });
   }
 
   async function loadActiveTabContent() {
@@ -784,11 +791,18 @@
         }
       }
       editorStore.setTabLoading(tabId, false);
+      // Sync the fully-loaded tab (including content) to all split panes so
+      // that SplitEditorPane's activeTab.content is never left as null after
+      // the startup load — previously only isLoading was synced here, causing
+      // the Markdown preview to appear blank until the pane's own lazy-loader
+      // fired a second IPC read.
+      const updatedTab = editorStore.getTabsSnapshot().find((t: any) => t.id === tabId);
+      if (updatedTab) splitStore.updateTabInAllPanes(updatedTab);
     }
   }
 
   async function loadWorkspaceState(root: string) {
-    appReady = false; // Show skeleton during switch
+    appReady = false;
     try {
       const startupState = await invoke<{
         config: any;
@@ -838,7 +852,7 @@
     } catch (err) {
       console.error('Failed to load workspace state:', err);
     }
-    appReady = true; // Hide skeleton after load completes
+    appReady = true;
     await loadActiveTabContent();
   }
 
@@ -881,10 +895,8 @@
     const name = `Untitled-${count}`;
     const id = `tab-${Date.now()}`;
     const tab = { id, path: name, name, content: '', language: 'plaintext', isPreview: false };
-    // Add to editorStore (global)
     editorStore.addTab(tab);
     editorStore.setActiveTab(id);
-    // Also add to active split pane
     const splitSnap = splitStore.getSnapshot();
     const activePaneId = splitSnap.activePaneId;
     if (activePaneId) {
@@ -907,6 +919,46 @@
       if (existing) {
         splitStore.setActivePaneTab(activePaneId, existing.id);
         editorStore.setActiveTab(existing.id);
+        // If the tab content is null (e.g. suspended) and not already loading,
+        // trigger a reload so the pane doesn't stay blank — SplitEditorPane's
+        // effect only fires on activeTab changes, so if this tab was already
+        // the activeTab before the click, the effect won't re-run on its own.
+        if (existing.content === null && !existing.isLoading) {
+          const tabId = existing.id;
+          const path = existing.path;
+          editorStore.setTabLoading(tabId, true);
+          fileOpenLoader.load(async () => {
+            try {
+              return await invoke<string>('read_file_text', { path });
+            } catch (e) {
+              if (String(e) === BINARY_SENTINEL) return { __error: 'binary' as const };
+              if (String(e) === LARGE_FILE_SENTINEL) {
+                const chunked = await invoke<any>('read_file_chunked', { path });
+                return { __error: 'large' as const, content: chunked.content };
+              }
+              throw e;
+            }
+          }).then(result => {
+            if (result === undefined) return;
+            if (result && typeof result === 'object' && '__error' in result) {
+              if (result.__error === 'binary') {
+                editorStore.setTabUnsupported(tabId, true);
+                editorStore.setInitialContent(tabId, '');
+              } else if (result.__error === 'large') {
+                editorStore.setInitialContent(tabId, result.content);
+                editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
+              }
+            } else if (typeof result === 'string') {
+              editorStore.setInitialContent(tabId, result);
+            }
+            editorStore.setTabLoading(tabId, false);
+            const updatedTab = editorStore.getTabsSnapshot().find((t: any) => t.id === tabId);
+            if (updatedTab) splitStore.updateTabInAllPanes(updatedTab);
+          }).catch(err => {
+            console.error('Failed to reload suspended tab:', err);
+            editorStore.setTabLoading(tabId, false);
+          });
+        }
         return;
       }
     }
@@ -937,6 +989,7 @@
       name: fileName,
       content: null as string | null,
       language: isImage ? 'image' : 'plaintext',
+      languageDetected: false,
       isPreview: tabToReplaceId !== null,
       isLargeFile: false,
       // Marks that App itself drives the load — prevents the pane focus
@@ -970,36 +1023,51 @@
     if (isImage) return;
 
     // Background load: language first (for syntax highlighting), then content.
+    // Wrapped in cancelableLoader (ASYNC-003) so rapid clicks don't cause a
+    // stale file's content to overwrite the active tab.
     const language = await invoke<string>('detect_language', { path: filePath }).catch(() => 'plaintext');
-    editorStore.updateTab(id, { language });
-    splitStore.updateTabInAllPanes({ id, language });
+    editorStore.updateTab(id, { language, languageDetected: true });
+    splitStore.updateTabInAllPanes({ id, language, languageDetected: true });
 
-    try {
-      const content = await invoke<string>('read_file_text', { path: filePath });
-      editorStore.setInitialContent(id, content);
-      editorStore.setTabLoading(id, false);
-      splitStore.updateTabInAllPanes(editorStore.getTabsSnapshot().find((t: any) => t.id === id) || { id });
-    } catch (e) {
-      if (String(e) === BINARY_SENTINEL) {
+    const content = await fileOpenLoader.load(async () => {
+      try {
+        return await invoke<string>('read_file_text', { path: filePath });
+      } catch (e) {
+        if (String(e) === BINARY_SENTINEL) return { __error: 'binary' as const };
+        if (String(e) === LARGE_FILE_SENTINEL) {
+          const chunked = await invoke<any>('read_file_chunked', { path: filePath });
+          return { __error: 'large' as const, content: chunked.content };
+        }
+        throw e;
+      }
+    });
+
+    // Superseded by a newer openFile call — discard silently
+    if (content === undefined) return;
+
+    if (content && typeof content === 'object' && '__error' in content) {
+      if (content.__error === 'binary') {
         editorStore.setTabUnsupported(id, true);
         editorStore.setInitialContent(id, '');
         editorStore.setTabLoading(id, false);
         splitStore.updateTabInAllPanes({ id, isUnsupported: true, isLoading: false });
-      } else if (String(e) === LARGE_FILE_SENTINEL) {
-        try {
-          const chunked = await invoke<any>('read_file_chunked', { path: filePath });
-          editorStore.setInitialContent(id, chunked.content);
-          editorStore.updateTab(id, { isLargeFile: true, isPreview: true });
-          editorStore.setTabLoading(id, false);
-          splitStore.updateTabInAllPanes({ id, isLargeFile: true, isPreview: true });
-        } catch (err) {
-          console.error('Failed to open large file:', err);
-          editorStore.setTabLoading(id, false);
-        }
-      } else {
-        console.error('Failed to open file:', e);
+      } else if (content.__error === 'large') {
+        editorStore.setInitialContent(id, content.content);
+        editorStore.updateTab(id, { isLargeFile: true, isPreview: true });
         editorStore.setTabLoading(id, false);
+        splitStore.updateTabInAllPanes({ id, isLargeFile: true, isPreview: true });
       }
+    } else if (typeof content === 'string') {
+      editorStore.setInitialContent(id, content);
+      editorStore.setTabLoading(id, false);
+      splitStore.updateTabInAllPanes(editorStore.getTabsSnapshot().find((t: any) => t.id === id) || { id });
+      // Detect encoding & line ending (CORE-005) — fire-and-forget, non-blocking
+      invoke<{ encoding: string; line_ending: string }>('get_file_encoding_info', { path: filePath })
+        .then(info => {
+          editorStore.updateTab(id, { encoding: info.encoding, lineEnding: info.line_ending });
+          splitStore.updateTabInAllPanes({ id, encoding: info.encoding, lineEnding: info.line_ending });
+        })
+        .catch(() => { /* best effort */ });
     }
   }
 
@@ -1015,7 +1083,30 @@
     },
     { id: 'toggle-sidebar', label: 'Toggle Sidebar', category: 'command', shortcut: 'Ctrl+B', action: () => uiStore.toggleSidebar() },
     { id: 'settings', label: 'Settings', category: 'command', shortcut: 'Ctrl+,', action: openSettings },
-    { id: 'go-to-line', label: 'Go to Line', category: 'command', shortcut: 'Ctrl+G', action: () => isGoToLineOpen = true }
+    { id: 'go-to-line', label: 'Go to Line', category: 'command', shortcut: 'Ctrl+G', action: () => isGoToLineOpen = true },
+    {
+      id: 'go-back', label: 'Go Back', category: 'command', shortcut: 'Alt+Left',
+      action: () => navigationStore.navigateBack(), keywords: ['navigate', 'back', 'history']
+    },
+    {
+      id: 'go-forward', label: 'Go Forward', category: 'command', shortcut: 'Alt+Right',
+      action: () => navigationStore.navigateForward(), keywords: ['navigate', 'forward', 'history']
+    },
+    {
+      id: 'run-config', label: 'Run: Start Configuration', category: 'command', shortcut: 'F5',
+      action: () => import('./lib/services/runService').then(m => m.runSelectedConfiguration()),
+      keywords: ['run', 'jalankan', 'launch', 'debug', 'terminal']
+    },
+    {
+      id: 'run-current-file', label: 'Run: Current File', category: 'command', shortcut: 'Ctrl+F5',
+      action: () => import('./lib/services/runService').then(m => m.runCurrentFile()),
+      keywords: ['run', 'jalankan', 'file aktif', 'execute']
+    },
+    {
+      id: 'run-stop', label: 'Run: Stop', category: 'command', shortcut: 'Shift+F5',
+      action: () => import('./lib/services/runService').then(m => m.stopActiveRuns()),
+      keywords: ['stop', 'hentikan', 'kill', 'terminate']
+    }
   ];
 
   // Palette file index is built lazily (on first palette open) so startup never
@@ -1288,9 +1379,18 @@
     //    (cmdOrCtrl && key === 'u')) {
     //   e.preventDefault();
     // }
-    // 4. Refresh / Reload
+    // 4. Refresh / Reload + Run
+    // F5 family is repurposed VS Code-style: run configuration, run current
+    // file, stop. Ctrl/Cmd+R variants stay blocked (no accidental reload).
     if (e.key === 'F5' || (cmdOrCtrl && key === 'r') || (cmdOrCtrl && e.shiftKey && key === 'r')) {
       e.preventDefault();
+      if (e.key === 'F5') {
+        import('./lib/services/runService').then(m => {
+          if (e.shiftKey) m.stopActiveRuns();
+          else if (cmdOrCtrl) m.runCurrentFile();
+          else m.runSelectedConfiguration();
+        });
+      }
     }
     // 5. Zooming Browser
     if (cmdOrCtrl && (key === '+' || key === '=' || key === '-' || key === '0')) {
@@ -1299,10 +1399,8 @@
     // 6. Navigation History
     if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
-      import('./lib/stores/navigation').then(m => {
-        if (e.key === 'ArrowLeft') m.navigationStore.navigateBack();
-        else m.navigationStore.navigateForward();
-      });
+      if (e.key === 'ArrowLeft') navigationStore.navigateBack();
+      else navigationStore.navigateForward();
     }
     // 7. Reopen Closed Tab
     if (cmdOrCtrl && e.shiftKey && key === 't') {
@@ -1569,10 +1667,10 @@
   function handleGlobalMouseUp(e: MouseEvent) {
     if (e.button === 3) { // Mouse Back
       e.preventDefault();
-      import('./lib/stores/navigation').then(m => m.navigationStore.navigateBack());
+      navigationStore.navigateBack();
     } else if (e.button === 4) { // Mouse Forward
       e.preventDefault();
-      import('./lib/stores/navigation').then(m => m.navigationStore.navigateForward());
+      navigationStore.navigateForward();
     }
   }
 
@@ -1611,7 +1709,7 @@
           class="p-1 rounded transition-colors hover:bg-hover text-icon-default hover:text-icon-active disabled:opacity-50 disabled:cursor-not-allowed"
           onclick={() => navigationStore.navigateBack()}
           title="Go Back (Alt+LeftArrow)"
-          disabled={$navigationStore.backStack.length === 0}
+          disabled={!$canGoBack}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
         </button>
@@ -1619,7 +1717,7 @@
           class="p-1 rounded transition-colors hover:bg-hover text-icon-default hover:text-icon-active disabled:opacity-50 disabled:cursor-not-allowed"
           onclick={() => navigationStore.navigateForward()}
           title="Go Forward (Alt+RightArrow)"
-          disabled={$navigationStore.forwardStack.length === 0}
+          disabled={!$canGoForward}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
         </button>
@@ -1887,26 +1985,35 @@
   {/if}
 
 
+  {#if $ui.isStatusBarEnabled}
   <div class="h-6 flex items-center justify-between px-3 text-xs select-none border-t bg-surface-2 text-primary border-subtle">
-    <div class="flex items-center gap-4 relative min-w-[200px]">
-      {#if $saveStatus}
-        <span class="text-muted animate-in fade-in duration-200">{$saveStatus}</span>
-      {:else}
-        <span class="animate-in fade-in duration-200">Ready</span>
-      {/if}
-      {#if activeTab}<span>{formatLanguageName(activeTab.language)}</span>{/if}
-      {#if $ui.globalStatus}
-        <span class="animate-in fade-in duration-200" title={$ui.globalStatus}>
-          {$ui.globalStatus.length > 40 ? $ui.globalStatus.slice(0, 40) + '...' : $ui.globalStatus}
-        </span>
-      {/if}
-    </div>
-    <div class="flex items-center gap-4">
-      <span>{currentCursorPos}</span>
-      <span>UTF-8</span>
-      <span>LF</span>
-    </div>
+      <!-- Left side: A=Ready, B=Language, C=GlobalStatus -->
+      <div class="flex items-center gap-4 min-w-[200px]">
+        {#if $saveStatus}
+          <span class="text-muted animate-in fade-in duration-200">{$saveStatus}</span>
+        {:else}
+          <span class="animate-in fade-in duration-200">Ready</span>
+        {/if}
+        {#if activeTab && activeTab.languageDetected && activeTab.language !== 'welcome' && activeTab.language !== 'settings' && activeTab.language !== 'image' && activeTab.language !== 'image-diff' && activeTab.language !== 'markdown-preview'}
+          <span>{formatLanguageName(activeTab.language)}</span>
+        {/if}
+        {#if $ui.globalStatus}
+          <span class="animate-in fade-in duration-200" title={$ui.globalStatus}>
+            {$ui.globalStatus.length > 40 ? $ui.globalStatus.slice(0, 40) + '...' : $ui.globalStatus}
+          </span>
+        {/if}
+      </div>
+      <!-- Right side: -A=Encoding, -B=Ln/Col -->
+      <div class="flex items-center gap-4">
+        {#if activeTab && activeTab.languageDetected && activeTab.language !== 'welcome' && activeTab.language !== 'settings' && activeTab.language !== 'image' && activeTab.language !== 'image-diff' && activeTab.language !== 'markdown-preview'}
+          {#if currentCursorPos}
+            <span>{currentCursorPos}</span>
+          {/if}
+          <span>{activeTab.encoding || 'UTF-8'}</span>
+        {/if}
+      </div>
   </div>
+  {/if}
 </div>
 
 {#if CommandPaletteComponent && isCommandPaletteOpen}
@@ -1919,11 +2026,9 @@
 
 {#if GoToLineComponent && isGoToLineOpen}
   <GoToLineComponent isOpen={true} onClose={() => isGoToLineOpen = false} onGoToLine={(line: number) => {
-    import('./lib/stores/navigation').then(m => {
-      if (activeTab) {
-        m.navigationStore.recordNavigation({ path: activeTab.path, line, col: 1 });
-      }
-    });
+    if (activeTab) {
+      navigationStore.recordNavigation(activeTab.path, line, 1);
+    }
     window.dispatchEvent(new CustomEvent('editor:action', { detail: { action: 'goto', line } }));
   }} />
 {/if}

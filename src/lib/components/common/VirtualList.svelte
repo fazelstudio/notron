@@ -40,7 +40,6 @@
   let containerEl: HTMLDivElement;
   let containerHeight = $state(0);
 
-  // Derived virtual window calculations
   let startIndex = $derived(
     Math.max(0, Math.floor(scrollTop / itemHeight) - overscan)
   );

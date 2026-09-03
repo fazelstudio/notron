@@ -20,9 +20,9 @@
     MAX_SIDEBAR_WIDTH,
     MIN_TERMINAL_HEIGHT,
     TERMINAL_BOTTOM_MARGIN,
-    TERMINAL_TYPES,
     SHELL_DISPLAY_NAMES,
   } from '../../constants';
+  import { getPlatformShells } from '../../utils/platform';
 
   let { isOpen, onClose }: { isOpen: boolean; onClose: () => void } = $props();
 
@@ -94,6 +94,15 @@
           description: 'Show your coding activity on your Discord profile.',
           get: () => settingsStore.effectiveSettings.discord_presence,
           set: (v) => handleSave('discord_presence', v),
+        },
+        {
+          id: 'confirmDelete',
+          type: 'toggle',
+          key: 'confirm_delete',
+          label: 'Confirm Before Delete',
+          description: 'Show a confirmation dialog before deleting files or folders.',
+          get: () => settingsStore.effectiveSettings.confirm_delete,
+          set: (v) => handleSave('confirm_delete', v),
         },
         {
           id: 'defaultSvgView',
@@ -228,6 +237,30 @@
           get: () => $uiStore.isMinimapEnabled,
           set: (v) => uiStore.setMinimapEnabled(v),
         },
+        {
+          id: 'breadcrumbs',
+          type: 'toggle',
+          label: 'Breadcrumbs',
+          description: 'Show the breadcrumb navigation bar below the tab strip.',
+          get: () => $uiStore.isBreadcrumbsEnabled,
+          set: (v) => uiStore.setBreadcrumbsEnabled(v),
+        },
+        {
+          id: 'stickyScroll',
+          type: 'toggle',
+          label: 'Sticky Scroll',
+          description: 'Pin the enclosing scope header (function, class, etc.) at the top of the editor while scrolling.',
+          get: () => $uiStore.isStickyScrollEnabled,
+          set: (v) => uiStore.setStickyScrollEnabled(v),
+        },
+        {
+          id: 'statusBar',
+          type: 'toggle',
+          label: 'Status Bar',
+          description: 'Show or hide the status bar at the bottom of the window.',
+          get: () => $uiStore.isStatusBarEnabled,
+          set: (v) => uiStore.setStatusBarEnabled(v),
+        },
       ],
     },
     {
@@ -343,7 +376,7 @@
           key: 'default_shell',
           label: 'Default Shell',
           description: 'The shell used when opening a new integrated terminal.',
-          options: TERMINAL_TYPES.map((t) => ({ value: t, label: SHELL_DISPLAY_NAMES[t] })),
+          options: getPlatformShells().map((t) => ({ value: t, label: SHELL_DISPLAY_NAMES[t] })),
           get: () => settingsStore.effectiveSettings.default_shell,
           set: (v) => handleSave('default_shell', v),
         },

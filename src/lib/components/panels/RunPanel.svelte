@@ -1,14 +1,23 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { runStore } from '../../stores/run';
-  import { ChevronDown, Play } from 'lucide-svelte';
+  import { editorStore } from '../../stores/editor';
+  import { terminalStore } from '../../stores/terminal';
+  import { uiStore } from '../../stores/ui';
+  import { ChevronDown, Play, Square } from 'lucide-svelte';
+
+  const activeTabIdStore = editorStore.activeTabId;
   import DropdownMenu, { type DropdownMenuItem } from '../common/DropdownMenu.svelte';
   import {
     createLaunchJsonFile,
+    hasLaunchJson,
+    getRunPreview,
     openFileForRunning,
+    openLaunchJson,
     refreshRunConfigurations,
     runSelectedConfiguration,
-    saveResolvedEntryAsConfig
+    saveResolvedEntryAsConfig,
+    stopActiveRuns,
+    activeRunTerminalIds
   } from '../../services/runService';
 
   let configurations = $derived($runStore.configurations);
@@ -33,6 +42,36 @@
         }))
   );
 
+  let preview = $state<string>('');
+  $effect(() => {
+    const cfg = selectedConfig;
+    preview = cfg ? getRunPreview(cfg) : '';
+  });
+
+  // Reactive liveness check: recompute whenever the terminal list changes
+  // (a run finishing removes its tab → Stop disables itself).
+  let runningLabels = $state<string[]>([]);
+  $effect(() => {
+    void $terminalStore.terminals;
+    runningLabels = activeRunTerminalIds();
+  });
+  const isRunning = () => runningLabels.length > 0;
+
+  let launchJsonExists = $state(false);
+
+  // Keep the configuration list in sync with the active editor file so the
+  // "Current File" entry never goes stale (VS Code recomputes continuously).
+  let lastRefreshKey = $state<string>('');
+  $effect(() => {
+    const key = `${$uiStore.explorerRoot}|${$activeTabIdStore}`;
+    if (!lastRefreshKey || lastRefreshKey !== key) {
+      lastRefreshKey = key;
+      refreshRunConfigurations().then(() => {
+        hasLaunchJson().then(v => (launchJsonExists = v));
+      });
+    }
+  });
+
   function saveSelectedConfig() {
     const cfg = selectedConfig;
     if (!cfg) return;
@@ -50,9 +89,9 @@
     runSelectedConfiguration();
   }
 
-  onMount(() => {
-    refreshRunConfigurations();
-  });
+  function stop() {
+    stopActiveRuns();
+  }
 </script>
 
 <div class="h-full flex flex-col bg-canvas text-primary overflow-hidden font-sans select-none">
@@ -77,14 +116,35 @@
             {/snippet}
           </DropdownMenu>
 
-          <button
-            class="flex items-center justify-center gap-1.5 w-full h-7 border border-accent bg-accent text-on-accent hover:bg-accent-hover text-[13px] rounded-sm transition-colors font-medium"
-            onclick={run}
-            title="Run the selected configuration in the integrated terminal"
-          >
-            <Play size={13} fill="currentColor" />
-            Run
-          </button>
+          <div class="flex items-center gap-1.5">
+            <button
+              class="flex items-center justify-center gap-1.5 flex-1 h-7 border border-accent bg-accent text-on-accent hover:bg-accent-hover text-[13px] rounded-sm transition-colors font-medium"
+              onclick={run}
+              title="Run the selected configuration in the integrated terminal"
+            >
+              <Play size={13} fill="currentColor" />
+              Run
+            </button>
+            {#if isRunning()}
+              <button
+                class="flex items-center justify-center gap-1.5 w-16 h-7 border border-subtle bg-surface-2 hover:bg-hover hover:border-error text-[12px] rounded-sm transition-colors"
+                onclick={stop}
+                title="Stop all runs started from Notron"
+              >
+                <Square size={10} fill="currentColor" />
+                Stop
+              </button>
+            {/if}
+          </div>
+
+          {#if preview}
+            <div
+              class="px-2 py-1.5 bg-surface border border-subtle rounded-sm text-[10.5px] leading-snug text-muted break-all whitespace-pre-wrap max-h-20 overflow-y-auto hover-scrollbar"
+              title="Command preview"
+            >
+              {preview}
+            </div>
+          {/if}
 
           {#if isSelectedDetected}
             <div class="flex items-center gap-1">
@@ -106,8 +166,15 @@
               To customize Run <button class="link-button" onclick={createLaunchJsonFile}>create a launch.json file</button>.
             </p>
 
+            {#if launchJsonExists}
+              <p class="text-[12px] text-secondary leading-snug">
+                <button class="link-button" onclick={openLaunchJson}>Open launch.json</button>.
+              </p>
+            {/if}
+
             <p class="text-[11px] text-muted leading-snug">
-              Notron runs the selected configuration in the integrated terminal.
+              Notron runs the selected configuration in the integrated terminal.<br />
+              Shortcuts: F5 run · Ctrl+F5 current file · Shift+F5 stop.
             </p>
           </div>
         </div>

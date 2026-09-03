@@ -45,7 +45,7 @@ function createPaletteStore() {
             path: workspacePath,
             excludeDirs: DEFAULT_EXCLUDE_DIRS,
             maxResults: MAX_PALETTE_INDEX_FILES,
-          }).catch(() => []); // graceful fallback
+          }).catch(() => []);
           workspaceFileCache.set(workspacePath, { paths: files, ts: now });
         }
 

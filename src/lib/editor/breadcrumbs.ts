@@ -7,9 +7,9 @@ import { registerLanguageMapping } from '@fazelstudio/codemirror-breadcrumbs';
  */
 
 import { EditorView } from '@codemirror/view';
-import { getMaterialIcon } from '../utils/materialIconMap';
-import { FILE_ICONS, lucideSvg, FILE } from '../utils/breadcrumbPathIcons';
-import { materialIconSvg } from '../utils/materialIconRenderer.svelte';
+import { getMaterialIcon } from '../extensions/material-icons/iconMap';
+import { FILE_ICONS, lucideSvg, FILE } from '../extensions/material-icons/breadcrumbPathIcons';
+import { materialIconSvg } from '../extensions/material-icons/iconRenderer.svelte';
 import { settingsStore } from '../stores/settings.svelte';
 
 /**
@@ -57,12 +57,10 @@ export function syncBreadcrumbBarIcons(view: EditorView) {
       // on every keystroke (that is what made the icons flicker).
       if (existing?.getAttribute('data-notron-icon') === `material:${iconName}`) return;
       existing?.remove();
-      const svg = materialIconSvg(iconName, 14);
-      if (!svg) return; // still loading — re-synced when materialIconState bumps
       const iconEl = document.createElement('span');
       iconEl.className = 'cm-breadcrumbs-icon';
       iconEl.setAttribute('data-notron-icon', `material:${iconName}`);
-      iconEl.innerHTML = svg;
+      iconEl.innerHTML = materialIconSvg(iconName, 14);
       seg.insertBefore(iconEl, labelEl || null);
     } else if (iconTheme === 'default') {
       const ext = label.split('.').pop()?.toLowerCase();

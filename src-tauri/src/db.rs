@@ -530,7 +530,6 @@ pub async fn save_workspace_session(
 
 // Tiered Settings Commands
 
-/// Read the full global_settings table into a serde_json map.
 pub fn query_global_settings_map(conn: &Connection) -> Result<std::collections::HashMap<String, Value>, String> {
     let mut stmt = conn.prepare("SELECT key, value FROM global_settings").map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |row| {
@@ -547,7 +546,6 @@ pub fn query_global_settings_map(conn: &Connection) -> Result<std::collections::
     Ok(map)
 }
 
-/// Read workspace-scoped settings for a single workspace.
 pub fn query_workspace_settings_map(conn: &Connection, workspace_id: &str) -> Result<std::collections::HashMap<String, Value>, String> {
     let mut stmt = conn.prepare("SELECT key, value FROM workspace_settings WHERE workspace_id = ?1").map_err(|e| e.to_string())?;
     let rows = stmt.query_map(params![workspace_id], |row| {

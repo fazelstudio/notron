@@ -347,6 +347,11 @@ pub async fn start_fs_watch(
 
                                 // Fan-out (3): hint Git status refresh.
                                 // If gitignore changed, refresh immediately (no extra delay)
+                                // DETECT-005: Case-only renames (file.txt -> File.txt) on case-insensitive
+                                // filesystems (macOS/Windows) may not trigger git status changes due to
+                                // core.ignorecase=true. The polling fallback (DETECT-001) will eventually
+                                // catch these, but users may need to use `git mv` manually or adjust
+                                // core.ignorecase if they want case-only renames to be tracked.
                                 // because gitignore changes directly affect git status.
                                 let _ = app_clone.emit("git-status-refresh", &payload);
                             }

@@ -5,7 +5,15 @@
   import { spawn } from "tauri-pty";
   import 'xterm/css/xterm.css';
 
-  let { tabId, type, cwd, initialCommand } = $props<{ tabId: string, type: 'powershell' | 'cmd', cwd: string, initialCommand?: string }>();
+  interface Props {
+    tabId: string;
+    type: TerminalType;
+    cwd: string;
+    initialCommand?: string;
+    env?: Record<string, string>;
+  }
+
+  let { tabId, type, cwd, initialCommand, env }: Props = $props();
 
   let terminalContainer = $state<HTMLElement | null>(null);
   let term: Terminal;
@@ -14,6 +22,7 @@
   let ptyProcess: any = null;
 
   import { terminalStore } from '../../stores/terminal';
+  import { SHELL_BINARIES, type TerminalType } from '../../constants';
   let isResizing = $derived($terminalStore.isResizing);
 
   $effect(() => {
@@ -25,11 +34,13 @@
 
   async function startShell() {
     try {
-      const cmdStr = type === 'powershell' ? 'powershell.exe' : 'cmd.exe';
-      ptyProcess = spawn(cmdStr, [], {
+      ptyProcess = spawn(SHELL_BINARIES[type], [], {
         cols: term.cols || 80,
         rows: term.rows || 24,
-        cwd: cwd || undefined
+        cwd: cwd || undefined,
+        // Merged over the inherited environment by the PTY plugin, so PATH
+        // and friends survive when Run injects config env vars.
+        env: env && Object.keys(env).length > 0 ? env : undefined
       });
 
       // Catch inner initialization errors (e.g. capabilities)
@@ -44,8 +55,13 @@
       });
 
       ptyProcess.onExit(() => {
+        terminalStore.unregisterProcess(tabId);
         terminalStore.closeTerminal(tabId);
       });
+
+      // Expose the kill handle so the store (and the Run feature) can stop
+      // this process without going through the terminal UI.
+      terminalStore.registerProcess(tabId, () => { try { ptyProcess?.kill(); } catch {} });
 
       term.onData(data => {
         if (!ptyProcess) return;
@@ -141,6 +157,7 @@
 
   onDestroy(() => {
     if (resizeObserver) resizeObserver.disconnect();
+    terminalStore.unregisterProcess(tabId);
     try {
       if (ptyProcess) ptyProcess.kill();
     } catch (e) {}

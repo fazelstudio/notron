@@ -32,7 +32,6 @@
     onOpenTerminal,
   }: Props = $props();
 
-  // Drag state for resizing
   let isDragging = $state(false);
 
   function startResize(e: MouseEvent) {
@@ -62,7 +61,6 @@
     document.addEventListener('mouseup', onMouseUp);
   }
 
-  // Derive split ratio safely
   let ratio = $derived(node.type === 'split' ? (node.splitRatio ?? 0.5) : 0.5);
   let isVertical = $derived(node.type === 'split' && node.direction === 'vertical');
 </script>

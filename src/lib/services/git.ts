@@ -66,8 +66,6 @@ export interface GitLogEntry {
   stats: string;
 }
 
-// ── Detection ────────────────────────────────────────────────────────────────
-
 export const UNKNOWN_AVAILABILITY: GitAvailability = {
   status: 'Unknown',
   path: null,
@@ -100,8 +98,6 @@ export async function setGitManualPath(path: string): Promise<GitAvailability> {
   return await invoke<GitAvailability>('set_git_manual_path', { path });
 }
 
-// ── Repo state ───────────────────────────────────────────────────────────────
-
 export async function getRepoState(cwd: string): Promise<RepoState> {
   return await invoke<RepoState>('get_repo_state', { cwd });
 }
@@ -130,8 +126,6 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
     return { staged: [], unstaged: [], branch: '' };
   }
 }
-
-// ── Operations ───────────────────────────────────────────────────────────────
 
 export async function initRepo(cwd: string): Promise<void> {
   await invoke('git_init', { cwd });

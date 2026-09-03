@@ -141,7 +141,7 @@ src/lib/utils/                   — pure helpers: path, replace, fileIcons, git
 - **Settings scoping:** settings are layered like VS Code — `HARDCODED_DEFAULTS ← user
   (global) ← workspace` — and persisted through `save_global_setting` /
   `save_workspace_setting` IPC (see `settings.svelte.ts`).
-- **IPC:** all frontend↔backend communication uses `invoke()` from `@tauri-apps/api/core`
+- **IPC:** all frontend-backend communication uses `invoke()` from `@tauri-apps/api/core`
   with snake_case command names (`load_global_settings`, `read_directory`, `fs-change`
   events, ...).
 

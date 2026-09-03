@@ -11,9 +11,30 @@ import {
   type ResolvedEntry
 } from './entryPointResolver';
 import { get } from 'svelte/store';
+import {
+  getRunTarget,
+  buildStandaloneStatements,
+  isRunnableFile,
+  quoteFor,
+  type ShellDialect
+} from '../utils/runTargets';
+import { getPlatformShells, getPlatformDefaultShell } from '../utils/platform';
+import { settingsStore } from '../stores/settings.svelte';
+import {
+  RUN_STATUS_MS,
+  RUN_TERMINAL_PREFIX,
+  LAUNCH_JSON_DIR,
+  LAUNCH_JSON_FILE
+} from '../constants';
 
 // ── Run service ─────────────────────────────────────────────────────────────
 // Runs a launch configuration in the integrated terminal (PTY).
+//
+// Flow mirrors VS Code's "Run Without Debugging":
+//   detect configurations (launch.json → project manifests → active file)
+//     → resolve variables → build PowerShell statements (+ env)
+//       → spawn a dedicated, named terminal (replacing a previous run of the
+//         same configuration) → surface Stop / preview in the Run panel.
 
 function getWorkspaceRoot() {
   return uiStore.getSnapshot().explorerRoot || '';
@@ -96,15 +117,27 @@ function stripJsonComments(input: string) {
   return output;
 }
 
+const PATH_SEPARATOR = '\\';
+
 function substituteVariables(value: string, workspaceFolder: string, activeFile: string | null) {
   const replaceToken = (input: string, token: string, replacement: string) => input.split(token).join(replacement);
   let resolved = value;
   resolved = replaceToken(resolved, '${workspaceFolder}', workspaceFolder);
+  resolved = replaceToken(resolved, '${workspaceFolderBasename}', workspaceFolder ? basename(workspaceFolder) : '');
   resolved = replaceToken(resolved, '${file}', activeFile || '');
   resolved = replaceToken(resolved, '${fileBasename}', activeFile ? basename(activeFile) : '');
   resolved = replaceToken(resolved, '${fileBasenameNoExtension}', activeFile ? basenameNoExt(activeFile) : '');
+  resolved = replaceToken(resolved, '${fileExtname}', activeFile ? '.' + (activeFile.split('.').pop() || '') : '');
   resolved = replaceToken(resolved, '${fileDirname}', activeFile ? dirname(activeFile) : workspaceFolder);
-  resolved = replaceToken(resolved, '${relativeFile}', activeFile && workspaceFolder ? activeFile.replace(`${workspaceFolder}\\`, '').replace(`${workspaceFolder}/`, '') : '');
+  resolved = replaceToken(resolved, '${fileDirnameBasename}', activeFile ? basename(dirname(activeFile)) : '');
+  const relFile = activeFile && workspaceFolder
+    ? activeFile.replace(`${workspaceFolder}\\`, '').replace(`${workspaceFolder}/`, '')
+    : '';
+  resolved = replaceToken(resolved, '${relativeFile}', relFile);
+  resolved = replaceToken(resolved, '${relativeFileDirname}', relFile ? dirname(relFile) : '');
+  resolved = replaceToken(resolved, '${pathSeparator}', PATH_SEPARATOR);
+  // ${env:NAME} cannot be read synchronously inside the webview; leave the
+  // token intact so it stays visible instead of silently resolving to "".
   return value ? resolved : value;
 }
 
@@ -156,6 +189,7 @@ async function openEditorTab(path: string) {
     name,
     content,
     language: isImage ? 'image' : await invoke<string>('detect_language', { path }),
+    languageDetected: true,
     isPreview,
     isLargeFile
   });
@@ -170,15 +204,61 @@ export async function openFileForRunning() {
   }
 }
 
+function launchJsonPath(workspaceFolder: string) {
+  return `${workspaceFolder}\\${LAUNCH_JSON_DIR}\\${LAUNCH_JSON_FILE}`;
+}
+
+/** True when the workspace has a .vscode/launch.json on disk. */
+export async function hasLaunchJson(): Promise<boolean> {
+  const root = getWorkspaceRoot();
+  if (!root) return false;
+  try {
+    return await invoke<boolean>('file_exists', { path: launchJsonPath(root) });
+  } catch {
+    return false;
+  }
+}
+
+let lastLaunchErrorSig: string | null = null;
+
 async function readLaunchJson(workspaceFolder: string) {
   if (!workspaceFolder) return null;
-  const launchPath = `${workspaceFolder}\\.vscode\\launch.json`;
+  const launchPath = launchJsonPath(workspaceFolder);
   try {
     const raw = await invoke<string>('read_file_text', { path: launchPath });
+    lastLaunchErrorSig = null;
     return { launchPath, raw };
   } catch {
     return null;
   }
+}
+
+async function hasCsprojIn(dir: string): Promise<boolean> {
+  try {
+    const node = await invoke<{ children?: { name: string }[] | null }>('read_directory', { path: dir, showDotFiles: false });
+    return (node?.children ?? []).some(c => typeof c.name === 'string' && c.name.toLowerCase().endsWith('.csproj'));
+  } catch {
+    return false;
+  }
+}
+
+async function currentFileConfig(activeFile: string): Promise<RunConfiguration | null> {
+  const target = getRunTarget(activeFile);
+  if (!target) return null;
+
+  // C# needs a project file in scope for `dotnet run` to work.
+  if (target.type === 'csharp' && !(await hasCsprojIn(dirname(activeFile)))) return null;
+
+  return {
+    name: `${target.label}: Current File`,
+    type: target.type,
+    request: 'launch',
+    program: activeFile,
+    cwd: dirname(activeFile),
+    source: 'detected',
+    detectedTier: 'active',
+    currentFile: activeFile
+  };
 }
 
 async function detectConfigurations(workspaceFolder: string, activeFile: string | null): Promise<RunConfiguration[]> {
@@ -211,8 +291,16 @@ async function detectConfigurations(workspaceFolder: string, activeFile: string 
         });
       }
     } catch (err) {
-      uiStore.addToast('launch.json invalid', 'alert', String(err));
+      // Throttle: only toast when the error signature changes, so switching
+      // tabs with a broken launch.json doesn't spam toasts.
+      const sig = String(err);
+      if (sig !== lastLaunchErrorSig) {
+        lastLaunchErrorSig = sig;
+        uiStore.addToast('launch.json invalid', 'alert', sig);
+      }
     }
+  } else {
+    lastLaunchErrorSig = null;
   }
 
   // ── Entry point resolution engine (manifest → framework → heuristic).
@@ -234,52 +322,18 @@ async function detectConfigurations(workspaceFolder: string, activeFile: string 
     }
   }
 
-  // ── Active file fallback (only for explicit "Current File" runs).
-  // Collected separately and appended last — it is the weakest tier.
+  // ── Active file fallback (registry-driven: covers every registered
+  // language, not just the previous js/ts/py/go/rb list).
   const currentFileConfigs: RunConfiguration[] = [];
   if (activeFile) {
-    const lower = activeFile.toLowerCase();
-    if (/\.(js|cjs|mjs|ts)$/.test(lower)) {
-      currentFileConfigs.push({
-        name: 'Launch Current File',
-        type: 'node',
-        request: 'launch',
-        program: activeFile,
-        cwd: dirname(activeFile),
-        source: 'detected',
-        detectedTier: 'active'
-      });
-    } else if (lower.endsWith('.py')) {
-      currentFileConfigs.push({
-        name: 'Python: Current File',
-        type: 'python',
-        request: 'launch',
-        program: activeFile,
-        cwd: dirname(activeFile),
-        source: 'detected',
-        detectedTier: 'active'
-      });
-    } else if (lower.endsWith('.go')) {
-      currentFileConfigs.push({
-        name: 'Go: Current File',
-        type: 'go',
-        request: 'launch',
-        program: activeFile,
-        cwd: dirname(activeFile),
-        source: 'detected',
-        detectedTier: 'active'
-      });
-    } else if (lower.endsWith('.rb')) {
-      currentFileConfigs.push({
-        name: 'Ruby: Current File',
-        type: 'ruby',
-        request: 'launch',
-        program: activeFile,
-        cwd: dirname(activeFile),
-        source: 'detected',
-        detectedTier: 'active'
-      });
+    const cfg = await currentFileConfig(activeFile);
+    // Pin the project's venv interpreter for Python current-file runs so
+    // they execute in the same environment as detected/launch.json runs.
+    if (cfg && cfg.type === 'python') {
+      const py = await resolvePythonInterpreter(workspaceFolder);
+      if (py !== 'python') cfg.pythonPath = py;
     }
+    if (cfg) currentFileConfigs.push(cfg);
   }
 
   // Confidence order: launch.json (explicit) → engine (manifest /
@@ -287,7 +341,7 @@ async function detectConfigurations(workspaceFolder: string, activeFile: string 
   // while never collapsing framework dev-servers that have no program file.
   const ordered = [...configs, ...resolvedConfigs, ...currentFileConfigs];
   return ordered.filter((cfg, i, arr) => {
-    if (!cfg.program) return true;
+    if (!cfg.program || cfg.currentFile) return true;
     const sig = `${cfg.type}|${cfg.program}`;
     // keep the first occurrence → launch.json/manifest precedence is preserved.
     return arr.findIndex(c => `${c.type}|${c.program}` === sig) === i;
@@ -309,11 +363,10 @@ export async function createLaunchJsonFile() {
     return;
   }
 
-  const vsCodeDir = `${workspaceFolder}\\.vscode`;
-  const launchPath = `${vsCodeDir}\\launch.json`;
+  const vsCodeDir = `${workspaceFolder}\\${LAUNCH_JSON_DIR}`;
+  const launchPath = `${vsCodeDir}\\${LAUNCH_JSON_FILE}`;
   const activeFile = getActiveFilePath();
   const template = `{
-  // Notron mirrors VS Code's launch.json structure for launch configurations.
   "version": "0.2.0",
   "configurations": [
     {
@@ -339,6 +392,20 @@ export async function createLaunchJsonFile() {
   }
 }
 
+/** Open the workspace's launch.json in an editor tab (creating nothing). */
+export async function openLaunchJson() {
+  const root = getWorkspaceRoot();
+  if (!root) return;
+  const path = launchJsonPath(root);
+  try {
+    if (await invoke<boolean>('file_exists', { path })) {
+      await openEditorTab(path);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * "Save as launch configuration": lift an auto-detected entry point
  * into an explicit launch.json entry so the heuristic can never be re-guessed.
@@ -350,10 +417,10 @@ export async function saveResolvedEntryAsConfig(entry: ResolvedEntry) {
     return;
   }
 
-  const vsCodeDir = `${workspaceFolder}\\.vscode`;
-  const launchPath = `${vsCodeDir}\\launch.json`;
+  const vsCodeDir = `${workspaceFolder}\\${LAUNCH_JSON_DIR}`;
+  const launchPath = `${vsCodeDir}\\${LAUNCH_JSON_FILE}`;
   const program = entry.program || '${workspaceFolder}\\index.js';
-  const type = entry.type; // node | python | go | ruby
+  const type = entry.type;
 
   const current = await readLaunchJson(workspaceFolder);
   let configurations: any[];
@@ -367,7 +434,6 @@ export async function saveResolvedEntryAsConfig(entry: ResolvedEntry) {
     configurations = [];
   }
 
-  // Avoid duplicates by (type + program)
   if (!configurations.some(c => c && c.program === program && c.type === type)) {
     const entryCfg: Record<string, unknown> = {
       type,
@@ -396,45 +462,118 @@ export async function saveResolvedEntryAsConfig(entry: ResolvedEntry) {
   }
 }
 
-function quoteShellArg(arg: string) {
-  if (!arg) return '""';
-  return /[\s"]/g.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+/** KEY=VALUE pairs from a .env file (comments, `export`, quotes tolerated). */
+function parseDotEnv(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    let key = trimmed.slice(0, eq).trim();
+    if (key.startsWith('export ')) key = key.slice(7).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key) out[key] = value;
+  }
+  return out;
 }
 
-// ── Run: spawn the process in a terminal PTY ───────────────────────────────
+interface TerminalPlan {
+  cwd: string;
+  label: string;
+  /** Shell statements executed sequentially in the spawned terminal. */
+  statements: string[];
+  env?: Record<string, string>;
+}
 
-function buildTerminalCommand(config: RunConfiguration) {
+/**
+ * The shell type Run spawns and the statement dialect it expects.
+ * Follows the user's default-shell preference when it exists on this OS,
+ * otherwise the platform's first choice (Windows → PowerShell, else bash).
+ */
+function runShellType(): ReturnType<typeof getPlatformDefaultShell> {
+  const platformShells = getPlatformShells();
+  const preferred = settingsStore.effectiveSettings.default_shell;
+  return platformShells.includes(preferred) ? preferred : getPlatformDefaultShell();
+}
+
+function runShellDialect(): ShellDialect {
+  return getPlatformDefaultShell() === 'powershell' ? 'powershell' : 'posix';
+}
+
+/**
+ * Render argv as one shell line. Tokens with spaces/quotes become quoted
+ * literals; bare flags pass through. PowerShell executes quoted paths only
+ * through the call operator, so a quoted head token gets an `& ` prefix.
+ */
+function joinCommand(shell: ShellDialect, parts: string[]) {
+  const needsQuote = (p: string) => /[\s"']/.test(p);
+  const rendered = parts.filter(p => p !== '').map(p => (needsQuote(p) ? quoteFor(shell, p) : p));
+  const head = rendered[0] ?? '';
+  const prefix = shell === 'powershell' && needsQuote(head) ? '& ' : '';
+  return prefix + rendered.join(' ');
+}
+
+function buildTerminalCommand(input: RunConfiguration): TerminalPlan | { unsupported: string } {
   const workspaceFolder = getWorkspaceRoot();
   const activeFile = getActiveFilePath();
-  const resolved = resolveConfiguration(config, workspaceFolder, activeFile);
+  const resolved = resolveConfiguration(input, workspaceFolder, activeFile);
+  const args = [...(resolved.args || [])];
+  // Statements are emitted for the shell that will actually host the run.
+  const shell = runShellDialect();
 
   if (resolved.request === 'attach') {
     return { unsupported: `Attach request is not supported yet for "${resolved.name}".` };
   }
 
-  // Framework dev-server entries carry a `command` hint the resolver
-  // produced (e.g. "next dev", "vite", "python manage.py runserver"). Their
-  // `program` may be empty — run the command directly in the terminal.
-  if (config.command) {
+  // Standalone current-file runs go through the run-target registry — one
+  // table decides every supported language. Interpreter overrides (venv
+  // python, custom ruby) are forwarded from the configuration.
+  if (resolved.currentFile) {
+    const override =
+      resolved.type === 'python' ? resolved.pythonPath :
+      resolved.type === 'ruby' ? resolved.rubyPath :
+      undefined;
+    const statements = buildStandaloneStatements(resolved.type, resolved.currentFile, { executable: override, shell });
+    if (!statements) {
+      return { unsupported: `"${resolved.type}" files cannot be run standalone on this platform.` };
+    }
+    return { cwd: resolved.cwd || dirname(resolved.currentFile), label: resolved.name, statements };
+  }
+
+  // Framework dev-server entries carry a package-manager-aware `command`
+  // hint the resolver produced (e.g. "npm run dev", "npx --no-install vite").
+  // Their `program` may be empty — run the command directly in the terminal.
+  if (input.command) {
     return {
-      cwd: config.cwd || workspaceFolder,
-      label: config.name,
-      command: config.command
+      cwd: resolved.cwd || workspaceFolder,
+      label: resolved.name,
+      statements: [input.command]
     };
   }
 
   if (resolved.type === 'node' || resolved.type === 'pwa-node' || resolved.type === 'node-terminal') {
-    const runtimeExecutable = resolved.runtimeExecutable || 'node';
-    const runtimeArgs = [...(resolved.runtimeArgs || [])];
-    const args = [...(resolved.args || [])];
+    // A pure command config ("npm run dev" via runtimeExecutable) is valid
+    // without a program field.
+    if (!resolved.program && resolved.runtimeExecutable) {
+      return {
+        cwd: resolved.cwd || workspaceFolder,
+        label: resolved.name,
+        statements: [joinCommand(shell, [resolved.runtimeExecutable!, ...(resolved.runtimeArgs || []), ...args])]
+      };
+    }
     if (!resolved.program) {
       return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
     }
-
+    const runtimeExecutable = resolved.runtimeExecutable || 'node';
+    const runtimeArgs = [...(resolved.runtimeArgs || [])];
     return {
       cwd: resolved.cwd || workspaceFolder,
       label: resolved.name,
-      command: [runtimeExecutable, ...runtimeArgs, resolved.program, ...args].map(quoteShellArg).join(' ')
+      statements: [joinCommand(shell, [runtimeExecutable, ...runtimeArgs, resolved.program!, ...args])]
     };
   }
 
@@ -442,52 +581,51 @@ function buildTerminalCommand(config: RunConfiguration) {
     if (!resolved.program) {
       return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
     }
-
-    const executable = resolved.runtimeExecutable || 'python';
-    const args = [resolved.program, ...(resolved.args || [])];
-
+    // Prefer an explicit runtime, then the detected venv interpreter.
+    const executable = resolved.runtimeExecutable || resolved.pythonPath || 'python';
     return {
       cwd: resolved.cwd || workspaceFolder,
       label: resolved.name,
-      command: [executable, ...args].map(quoteShellArg).join(' ')
+      statements: [joinCommand(shell, [executable, resolved.program!, ...args])]
     };
   }
 
-  // Go: `go run <file>`
+  // Go: explicit configs run the picked file; resolver-detected entries carry
+  // command "go run ." which compiles the whole main package.
   if (resolved.type === 'go') {
+    if (input.command) {
+      return { cwd: resolved.cwd || workspaceFolder, label: resolved.name, statements: [input.command] };
+    }
     if (!resolved.program) {
       return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
     }
     return {
       cwd: resolved.cwd || workspaceFolder,
       label: resolved.name,
-      command: ['go', 'run', resolved.program, ...(resolved.args || [])].map(quoteShellArg).join(' ')
+      statements: [joinCommand(shell, ['go', 'run', resolved.program!, ...args])]
     };
   }
 
-  // Ruby: `ruby <file>`
   if (resolved.type === 'ruby' || resolved.type === 'rdbg') {
     if (!resolved.program) {
       return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
     }
-    const executable = resolved.runtimeExecutable || 'ruby';
+    const executable = resolved.runtimeExecutable || resolved.rubyPath || 'ruby';
     return {
       cwd: resolved.cwd || workspaceFolder,
       label: resolved.name,
-      command: [executable, resolved.program, ...(resolved.args || [])].map(quoteShellArg).join(' ')
+      statements: [joinCommand(shell, [executable, resolved.program!, ...args])]
     };
   }
 
-  // Rust/Cargo: `cargo run` (root package)
   if (resolved.type === 'rust') {
     return {
       cwd: resolved.cwd || workspaceFolder,
       label: resolved.name,
-      command: ['cargo', 'run', ...(resolved.args || [])].map(quoteShellArg).join(' ')
+      statements: [joinCommand(shell, ['cargo', 'run', ...args])]
     };
   }
 
-  // Deno: `deno run <file>`
   if (resolved.type === 'deno') {
     if (!resolved.program) {
       return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
@@ -495,7 +633,7 @@ function buildTerminalCommand(config: RunConfiguration) {
     return {
       cwd: resolved.cwd || workspaceFolder,
       label: resolved.name,
-      command: ['deno', 'run', resolved.program, ...(resolved.args || [])].map(quoteShellArg).join(' ')
+      statements: [joinCommand(shell, ['deno', 'run', resolved.program!, ...args])]
     };
   }
 
@@ -510,13 +648,117 @@ function buildTerminalCommand(config: RunConfiguration) {
   };
 }
 
-function launchInTerminal(command: string, cwd: string, label: string) {
-  terminalStore.newTerminal('powershell', cwd, {
-    initialCommand: command,
-    name: label
+/** Human-readable preview of what a configuration will execute. */
+export function getRunPreview(config: RunConfiguration): string {
+  const built = buildTerminalCommand(config);
+  if ('unsupported' in built) return built.unsupported;
+  const envPart = built.env && Object.keys(built.env).length > 0 ? '[env] ' : '';
+  return `${envPart}${built.statements.join(' ; ')}`;
+}
+
+// ── Terminal lifecycle: one terminal per config, rerun replaces, stop kills ─
+
+/** label → terminal id of the most recent run for that configuration. */
+const runTerminals = new Map<string, string>();
+
+function findTerminal(id: string | undefined) {
+  if (!id) return undefined;
+  return terminalStore.getSnapshot().terminals.find(t => t.id === id);
+}
+
+function launchInTerminal(plan: TerminalPlan, env?: Record<string, string>) {
+  // VS Code semantics: rerunning a configuration replaces its previous
+  // session instead of stacking terminals.
+  const prevId = runTerminals.get(plan.label);
+  if (prevId) {
+    terminalStore.killProcess(prevId);
+    terminalStore.closeTerminal(prevId);
+  }
+
+  const initialCommand = plan.statements.join('\r\n') + '\r\n';
+  const id = terminalStore.newTerminal(runShellType(), plan.cwd, {
+    initialCommand,
+    name: `${RUN_TERMINAL_PREFIX}: ${plan.label}`,
+    exactName: true,
+    env
   });
+  runTerminals.set(plan.label, id);
   terminalStore.setActivePanel('terminal');
-  runStore.setLastRunLabel(label);
+  runStore.setLastRunLabel(plan.label);
+}
+
+function killAllRunTerminals(): number {
+  let killed = 0;
+  for (const [label, id] of [...runTerminals.entries()]) {
+    if (findTerminal(id)) {
+      terminalStore.killProcess(id);
+      terminalStore.closeTerminal(id);
+      killed++;
+    }
+    runTerminals.delete(label);
+  }
+  return killed;
+}
+
+/** True while at least one Run-spawned terminal is still alive. */
+export function hasActiveRuns(): boolean {
+  for (const id of runTerminals.values()) {
+    if (findTerminal(id)) return true;
+  }
+  return false;
+}
+
+/** Terminal ids currently owned by Run (for reactive UI checks). */
+export function activeRunTerminalIds(): string[] {
+  const ids: string[] = [];
+  for (const [label, id] of runTerminals.entries()) {
+    if (findTerminal(id)) ids.push(id);
+    else runTerminals.delete(label);
+  }
+  return ids;
+}
+
+/** Stop every running configuration started from Notron. */
+export async function stopActiveRuns() {
+  const killed = killAllRunTerminals();
+  if (killed > 0) {
+    uiStore.setStatus(killed === 1 ? 'Run stopped' : `${killed} runs stopped`, RUN_STATUS_MS);
+  } else {
+    uiStore.setStatus('No running process', RUN_STATUS_MS);
+  }
+  return killed;
+}
+
+async function executePlan(input: RunConfiguration) {
+  const workspaceFolder = getWorkspaceRoot();
+
+  // Resolve envFile (async read) then merge with inline env — inline wins.
+  let env: Record<string, string> | undefined;
+  const snapshot = resolveConfiguration(input, workspaceFolder, getActiveFilePath());
+  if (snapshot.envFile) {
+    const base = snapshot.cwd || workspaceFolder;
+    const normalized = snapshot.envFile.replace(/^\.\?[\\/]/, '').replace(/\//g, '\\');
+    const path = /^([A-Za-z]:[\\/])/.test(normalized) ? normalized : `${base}\\${normalized}`;
+    try {
+      const raw = await invoke<string>('read_file_text', { path });
+      env = { ...parseDotEnv(raw), ...(snapshot.env || {}) };
+    } catch {
+      if (snapshot.env) env = { ...snapshot.env };
+      uiStore.addToast(`envFile not found: ${basename(snapshot.envFile)}`, 'alert');
+    }
+  } else if (snapshot.env) {
+    env = { ...snapshot.env };
+  }
+
+  const built = buildTerminalCommand(input);
+  if ('unsupported' in built) {
+    uiStore.addToast('Run not available', 'alert', built.unsupported);
+    return false;
+  }
+
+  launchInTerminal(built, env);
+  uiStore.setStatus(`Running ${built.label}`, RUN_STATUS_MS);
+  return true;
 }
 
 export async function runSelectedConfiguration() {
@@ -539,12 +781,33 @@ export async function runSelectedConfiguration() {
     return;
   }
 
-  const built = buildTerminalCommand(selected);
-  if ('unsupported' in built) {
-    uiStore.addToast('Run not available', 'alert', built.unsupported);
+  await executePlan(selected);
+}
+
+/** Run the active editor file directly (VS Code "Run Current File"). */
+export async function runCurrentFile() {
+  const workspaceFolder = getWorkspaceRoot();
+  if (!workspaceFolder) {
+    uiStore.addToast('Open a workspace first', 'alert');
     return;
   }
 
-  launchInTerminal(built.command, built.cwd, `Run: ${built.label}`);
-  uiStore.setStatus(`Running ${built.label}`, 2200);
+  const activeFile = getActiveFilePath();
+  if (!activeFile) {
+    uiStore.addToast('No runnable file is open', 'alert', 'Open a file first.');
+    return;
+  }
+
+  if (!isRunnableFile(activeFile)) {
+    uiStore.addToast('Cannot run this file', 'alert', `No runner registered for "${basename(activeFile)}".`);
+    return;
+  }
+
+  const cfg = await currentFileConfig(activeFile);
+  if (!cfg) {
+    uiStore.addToast('Cannot run this file', 'alert', 'This C# file has no .csproj next to it.');
+    return;
+  }
+
+  await executePlan(cfg);
 }

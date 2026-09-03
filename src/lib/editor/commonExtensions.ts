@@ -24,6 +24,7 @@ import {
   closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap,
 } from '@codemirror/autocomplete';
 import { indentationMarkers } from '@replit/codemirror-indentation-markers';
+import { urlLinkExtension } from './urlExtension';
 
 export const COMMON_EXTENSIONS: Extension[] = [
   EditorView.theme({
@@ -72,6 +73,7 @@ export const COMMON_EXTENSIONS: Extension[] = [
   highlightActiveLine(),
   highlightSelectionMatches(),
   scrollPastEnd(),
+  urlLinkExtension(),
   keymap.of([
     ...defaultKeymap,
     ...historyKeymap,

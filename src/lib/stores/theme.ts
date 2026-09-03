@@ -54,9 +54,7 @@ function createThemeStore(): Readable<{ theme: string; isDark: boolean }> & { se
         localStorage.setItem(THEME_KEY, theme);
         applyThemeToDom(theme, isDark);
       }
-    } catch {
-      // storage unavailable
-    }
+    } catch {}
   }
 
   if (typeof window !== 'undefined') {

@@ -220,6 +220,9 @@ pub struct GitState {
     pub decorations: Mutex<HashMap<String, GitDecoration>>,
     /// op_id → child pid for running network operations.
     pub ops: Mutex<HashMap<String, u32>>,
+    /// DETECT-008: Serializes write operations (stage/unstage/commit) to prevent
+    /// race conditions when the user performs rapid index modifications.
+    pub write_op_lock: tokio::sync::Mutex<()>,
 }
 
 impl GitState {
@@ -231,6 +234,7 @@ impl GitState {
             manual_path: Mutex::new(persisted.manual_path),
             decorations: Mutex::new(HashMap::new()),
             ops: Mutex::new(HashMap::new()),
+            write_op_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -588,18 +592,49 @@ fn abs_path(cwd: &str, rel: &str) -> String {
     Path::new(cwd).join(rel).to_string_lossy().into_owned()
 }
 
-/// Priority used for folder rollups: exact VSCode order:
-/// Conflict(!) > Deleted(D) > Added(A, staged new) > Untracked(U) > Modified(M) > Renamed(R) > Copied(C) > other.
-/// This matches VS Code's scm/git decoration provider priority exactly.
+/// DETECT-007: Check if a path is a symlink whose target is outside the workspace.
+/// Returns true if the symlink points outside the working tree (git status should
+/// not be shown for such items as they belong to a different repo context).
+#[allow(dead_code)]
+fn is_symlink_outside_workspace(path: &str, workspace_root: &str) -> bool {
+    let p = Path::new(path);
+    if !p.is_symlink() {
+        return false;
+    }
+    match std::fs::read_link(p) {
+        Ok(target) => {
+            let target = if target.is_relative() {
+                Path::new(path).parent().unwrap_or(Path::new(path)).join(&target)
+            } else {
+                target
+            };
+            match std::fs::canonicalize(&target) {
+                Ok(canonical_target) => {
+                    match std::fs::canonicalize(workspace_root) {
+                        Ok(canonical_ws) => !canonical_target.starts_with(&canonical_ws),
+                        Err(_) => true // Can't resolve workspace root = treat as outside
+                    }
+                }
+                Err(_) => true // Can't resolve = treat as outside
+            }
+        }
+        Err(_) => false
+    }
+}
+
+/// Priority used for folder rollups per DECO-003:
+/// Conflict > Deleted > Modified/Renamed > Added/Untracked > Ignored > other.
+/// Modified ranks higher than Added because it indicates an existing tracked file
+/// was changed — more "urgent" to notice than a brand-new untracked file.
 fn code_priority(code: &str) -> u8 {
     match code {
         "Conflict" => 7,
         "D"        => 6,
-        "A"        => 5,  // staged new file — higher than untracked
-        "U"        => 4,  // untracked new file
-        "M"        => 3,
-        "R"        => 2,
-        "C"        => 1,
+        "M"        => 5,
+        "R"        => 4,
+        "A"        => 3,
+        "U"        => 2,
+        "Ignored"  => 1,
         _          => 0,
     }
 }
@@ -802,7 +837,6 @@ pub async fn get_repo_state(
 
     let mut repo = RepoState::fresh();
     
-    // Attempt to get remote_url
     if let Ok(url_out) = run_git_raw(&git, &["config", "--get", "remote.origin.url"], Some(&cwd), Some(&app)).await {
         if url_out.status.success() {
             let url = String::from_utf8_lossy(&url_out.stdout).trim().to_string();
@@ -1134,6 +1168,8 @@ pub async fn git_init(app: AppHandle, cwd: String, state: State<'_, GitState>) -
 
 #[tauri::command]
 pub async fn git_stage(app: AppHandle, cwd: String, path: String, state: State<'_, GitState>) -> Result<(), String> {
+    // DETECT-008: Acquire write lock to serialize stage/unstage/commit operations
+    let _lock = state.write_op_lock.lock().await;
     let git = state.git_command().ok_or("Git is not available")?;
     let path = if path.trim() == "." { ".".to_string() } else { path };
     run_git(&git, &["add", "--", &path], &cwd, &state, Some(&app)).await.map(|_| ())
@@ -1141,6 +1177,8 @@ pub async fn git_stage(app: AppHandle, cwd: String, path: String, state: State<'
 
 #[tauri::command]
 pub async fn git_unstage(app: AppHandle, cwd: String, path: String, state: State<'_, GitState>) -> Result<(), String> {
+    // DETECT-008: Acquire write lock to serialize stage/unstage/commit operations
+    let _lock = state.write_op_lock.lock().await;
     let git = state.git_command().ok_or("Git is not available")?;
     let path = if path.trim() == "." { ".".to_string() } else { path };
     run_git(&git, &["restore", "--staged", "--", &path], &cwd, &state, Some(&app)).await.map(|_| ())
@@ -1148,6 +1186,8 @@ pub async fn git_unstage(app: AppHandle, cwd: String, path: String, state: State
 
 #[tauri::command]
 pub async fn git_commit(app: AppHandle, cwd: String, message: String, state: State<'_, GitState>) -> Result<(), String> {
+    // DETECT-008: Acquire write lock to serialize stage/unstage/commit operations
+    let _lock = state.write_op_lock.lock().await;
     let git = state.git_command().ok_or("Git is not available")?;
     if message.trim().is_empty() {
         return Err("Commit message is empty".to_string());
@@ -1292,7 +1332,10 @@ pub async fn get_git_file_content(app: AppHandle, cwd: String, path: String, rev
     let git = state.git_command().ok_or("Git is not available")?;
     let rel_path = repo_relative_path(&cwd, &path);
     let target = format!("{}:{}", revision, rel_path);
-    run_git(&git, &["show", &target], &cwd, &state, Some(&app)).await
+    let content = run_git(&git, &["show", &target], &cwd, &state, Some(&app)).await?;
+    // Normalize CRLF to LF to match read_file_text (file_ops.rs) behavior,
+    // preventing git gutter baseline mismatch on Windows (CRLF on disk).
+    Ok(content.replace("\r\n", "\n"))
 }
 
 #[tauri::command]

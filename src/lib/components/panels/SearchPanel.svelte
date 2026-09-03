@@ -55,6 +55,7 @@
   
   let searchQuery = $state($ui.searchQuery);
   let replaceQuery = $state($ui.replaceQuery);
+  let historyIndex = $state(-1); // SEARCH-010: current position in search history
 
   let caseSensitive = $state(false);
   let wholeWord = $state(false);
@@ -66,7 +67,6 @@
   let matchesFound = $state(cachedMatchesFound);
   let lastOptionKey = $state('00');
 
-  // Sync cache and result count
   $effect(() => {
     cachedResults = results;
     cachedFilesScanned = filesScanned;
@@ -420,8 +420,31 @@
     if (e.key === 'Enter') {
       e.preventDefault();
       if (searchQuery.trim().length > 0) {
+        // SEARCH-010: save to history before searching
+        uiStore.addSearchHistory(searchQuery);
+        historyIndex = -1;
         if (untrack(() => uiStore.getSnapshot().searchQuery) !== searchQuery) uiStore.setSearchQuery(searchQuery);
         startSearch(searchQuery);
+      }
+    } else if (e.key === 'ArrowUp') {
+      // SEARCH-010: navigate up in search history
+      const history = uiStore.getSearchHistorySnapshot();
+      if (history.length === 0) return;
+      e.preventDefault();
+      if (historyIndex < history.length - 1) {
+        historyIndex++;
+        searchQuery = history[historyIndex];
+      }
+    } else if (e.key === 'ArrowDown') {
+      // SEARCH-010: navigate down in search history
+      const history = uiStore.getSearchHistorySnapshot();
+      e.preventDefault();
+      if (historyIndex > 0) {
+        historyIndex--;
+        searchQuery = history[historyIndex];
+      } else {
+        historyIndex = -1;
+        searchQuery = '';
       }
     }
   }
@@ -507,7 +530,7 @@
       </button>
       <div class="flex flex-col flex-1 gap-1.5 min-w-0">
         <div class="flex items-center flex-1 border rounded px-1.5 py-1 border-subtle bg-canvas focus-within:border-focus">
-          <input id="global-search-input" type="text" placeholder="Search" bind:value={searchQuery} onkeydown={handleKeydown} class="flex-1 bg-transparent text-sm outline-none min-w-0 placeholder-muted" />
+          <input id="global-search-input" type="text" placeholder="Search" bind:value={searchQuery} onkeydown={handleKeydown} oninput={() => { historyIndex = -1; }} class="flex-1 bg-transparent text-sm outline-none min-w-0 placeholder-muted" />
           <Tooltip content="Match Case" wrapperClass="shrink-0 flex items-center">
             <button aria-label="Match Case" class="p-0.5 rounded cursor-pointer transition-colors text-icon-default hover:text-icon-active hover:bg-hover {caseSensitive ? 'text-accent' : ''}" onclick={() => caseSensitive = !caseSensitive}>
               <CaseSensitive size={14} />

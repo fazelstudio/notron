@@ -23,7 +23,7 @@
     while (tabsSnapshot.some((t: any) => t.path === `Untitled-${count}`)) count++;
     const name = `Untitled-${count}`;
     const id = `tab-${Date.now()}`;
-    const tab = { id, path: name, name, content: '', language: 'plaintext', isPreview: false };
+    const tab = { id, path: name, name, content: '', language: 'plaintext', languageDetected: true, isPreview: false };
     editorStore.addTab(tab);
     editorStore.setActiveTab(id);
     const activePaneId = splitStore.getSnapshot().activePaneId;
@@ -151,6 +151,9 @@
 
   function isDisabled() { return !isFileActive; }
   function isMinimapChecked() { return $ui.isMinimapEnabled; }
+  function isBreadcrumbsChecked() { return $ui.isBreadcrumbsEnabled; }
+  function isStickyScrollChecked() { return $ui.isStickyScrollEnabled; }
+  function isStatusBarChecked() { return $ui.isStatusBarEnabled; }
 
   const menus = [
     {
@@ -239,7 +242,10 @@
             else editorStore.addTab({ id: 'welcome', path: 'Welcome', name: 'Welcome', content: '', language: 'welcome', isPreview: true });
             closeAll();
           }, checked: () => $tabs.some((t: any) => t.language === 'welcome') },
-        { label: 'Minimap', action: () => { uiStore.toggleMinimap(); closeAll(); }, checked: isMinimapChecked }
+        { label: 'Minimap', action: () => { uiStore.toggleMinimap(); closeAll(); }, checked: isMinimapChecked },
+        { label: 'Breadcrumbs', action: () => { uiStore.toggleBreadcrumbs(); closeAll(); }, checked: isBreadcrumbsChecked },
+        { label: 'Sticky Scroll', action: () => { uiStore.toggleStickyScroll(); closeAll(); }, checked: isStickyScrollChecked, sep: true },
+        { label: 'Status Bar', action: () => { uiStore.toggleStatusBar(); closeAll(); }, checked: isStatusBarChecked }
       ]
     }
   ];

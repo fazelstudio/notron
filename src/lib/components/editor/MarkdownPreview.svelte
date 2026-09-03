@@ -19,6 +19,7 @@
   let toc = $state<TocNode[]>([]);
   let isRendering = $state(false);
   let renderError = $state(false);
+  let errorMsg = $state('');
 
   let renderSeq = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -31,6 +32,7 @@
     html = '';
     toc = [];
     renderError = false;
+    errorMsg = '';
     isRendering = true;
 
     // Defer the actual markdown render so the empty tab paints first
@@ -49,6 +51,7 @@
         if (seq !== renderSeq) return;
         console.error('Markdown render error', e);
         renderError = true;
+        errorMsg = e instanceof Error ? e.message : String(e);
         isRendering = false;
       }
     }, 0);
@@ -127,6 +130,47 @@
       });
     });
   });
+
+  function handlePreviewClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+
+    const copyBtn = target.closest('.md-copy-btn');
+    if (copyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const btn = copyBtn as HTMLElement;
+      const code = btn.getAttribute('data-md-copy');
+      if (code === null) return;
+      const decoded = code.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+      navigator.clipboard.writeText(decoded).then(() => {
+        btn.classList.add('md-copied');
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => {
+          btn.classList.remove('md-copied');
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        }, 2000);
+      });
+      return;
+    }
+
+    const link = target.closest('a[href]');
+    if (link) {
+      e.preventDefault();
+      e.stopPropagation();
+      const href = link.getAttribute('href');
+      if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+        import('@tauri-apps/plugin-opener').then(({ openUrl }) => {
+          openUrl(href).catch(() => {});
+        }).catch(() => {});
+      }
+      return;
+    }
+  }
+
+  function handlePreviewContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 </script>
 
 {#snippet tocItem(node: TocNode)}
@@ -183,9 +227,16 @@
   {/if}
   <div bind:this={scrollEl} class="flex-1 overflow-y-auto hover-scrollbar" onscroll={handleScroll}>
     {#if renderError}
-      <div class="h-full flex items-center justify-center text-sm text-error">Failed to render preview</div>
+      <div class="h-full flex flex-col items-center justify-center gap-2 text-sm text-error">
+        <span>Failed to render preview</span>
+        {#if errorMsg}
+          <span class="text-xs text-muted max-w-md text-center break-words">{errorMsg}</span>
+        {/if}
+      </div>
     {:else if !isRendering && html}
-      <div class="prose max-w-none px-[10%] py-8" class:prose-invert={isDark}>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="prose max-w-none px-[10%] py-8" class:prose-invert={isDark} onclick={handlePreviewClick} oncontextmenu={handlePreviewContextMenu}>
         {@html html}
       </div>
     {:else}

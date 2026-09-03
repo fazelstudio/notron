@@ -1,9 +1,9 @@
+<!-- svelte-ignore state_referenced_locally -->
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { uiStore } from '../../stores/ui';
   
   let { initialName, node, depth }: { initialName: string; node: any; depth: number } = $props();
-  // svelte-ignore state_referenced_locally
   let val = $state(initialName);
   let inputEl: HTMLInputElement | undefined = $state();
   

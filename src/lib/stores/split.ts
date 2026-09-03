@@ -41,7 +41,6 @@ function createInitialState(): SplitState {
   };
 }
 
-/** Replace a node in the tree by id */
 function replaceNodeById(root: SplitNode, targetId: string, replacement: SplitNode): SplitNode {
   if (root.id === targetId) return replacement;
   if (root.type === 'split' && root.children) {
@@ -73,7 +72,6 @@ function removePane(root: SplitNode, paneId: string): SplitNode | null {
   return root;
 }
 
-/** Collect all pane IDs from the tree */
 function collectPaneIds(node: SplitNode): string[] {
   if (node.type === 'pane') return node.paneId ? [node.paneId] : [];
   if (node.type === 'split' && node.children) {
@@ -148,7 +146,6 @@ function createSplitStore() {
     store.update((state) => {
       const allPaneIds = collectPaneIds(state.rootNode);
       if (allPaneIds.length <= 1) {
-        // Just clear tabs on the only remaining pane
         const pane = state.panes[paneId];
         if (!pane) return state;
         return {

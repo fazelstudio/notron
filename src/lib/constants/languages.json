@@ -283,13 +283,16 @@
     "glsl",
     "vert",
     "frag",
-    "vs",
-    "fs"
+    "vs"
   ],
   "gleam": [
     "gleam"
   ],
   "solidity": [
     "sol"
+  ],
+  "elixir": [
+    "ex",
+    "exs"
   ]
 }

@@ -11,7 +11,7 @@ export default defineConfig(async () => ({
   resolve: {
     preserveSymlinks: true,
     // Force a single copy of CodeMirror core even for linked/local packages
-    dedupe: ['@codemirror/state', '@codemirror/view', '@codemirror/language', '@lezer/common', '@lezer/highlight', '@lezer/html'],
+    dedupe: ['@codemirror/state', '@codemirror/view', '@codemirror/language', '@lezer/common', '@lezer/highlight', '@lezer/html', '@lezer/lr'],
   },
 
   clearScreen: false,
@@ -30,8 +30,8 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-  // Pre-bundle dependency berat saat dev server start, bukan saat browser request pertama
-  // Ini menghilangkan blank white screen dan "Not Responding" di dev mode
+  // Pre-bundle heavy dependencies when the dev server starts, rather than upon the first browser request
+  // This eliminates the blank white screen and "Not Responding" issues in dev mode
   optimizeDeps: {
     include: [
       '@codemirror/view',
@@ -97,6 +97,8 @@ export default defineConfig(async () => ({
       '@fazelstudio/codemirror-lang-solidity',
       '@fazelstudio/codemirror-lang-astro',
       '@fazelstudio/codemirror-lang-prisma',
+      '@fazelstudio/codemirror-lang-kotlin',
+      '@fazelstudio/codemirror-lang-swift',
       '@nextjournal/lang-clojure',
       
       // Community Pure Lezer langs
@@ -129,7 +131,6 @@ export default defineConfig(async () => ({
       '@codemirror/legacy-modes/mode/diff',
       '@codemirror/legacy-modes/mode/cmake',
       '@codemirror/legacy-modes/mode/clike',
-      '@codemirror/legacy-modes/mode/swift',
       '@codemirror/legacy-modes/mode/r',
       '@codemirror/legacy-modes/mode/pascal',
       '@codemirror/legacy-modes/mode/haskell',
@@ -142,16 +143,16 @@ export default defineConfig(async () => ({
       '@codemirror/legacy-modes/mode/stylus',
       '@codemirror/legacy-modes/mode/stex'
     ],
-    // Exclude mermaid dari pre-bundle karena sudah lazy loaded
+    // Exclude mermaid from the pre-bundle because it is lazy-loaded.
     exclude: ['mermaid'],
   },
   build: {
     rollupOptions: {
       output: {
         manualChunks: {
-          // Pisahkan mermaid ke chunk terpisah (lazy loaded)
+          // Split Mermaid into a separate chunk (lazy-loaded).
           'mermaid': ['mermaid'],
-          // Pisahkan CodeMirror core ke chunk terpisah
+          // Split CodeMirror core into a separate chunk.
           'codemirror': [
             '@codemirror/view',
             '@codemirror/state',

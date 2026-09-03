@@ -30,6 +30,7 @@ export interface AppSettings {
   default_md_view: 'preview' | 'code' | 'split';
   discord_presence: boolean;
   default_shell: TerminalType;
+  confirm_delete: boolean;
 }
 
 export const HARDCODED_DEFAULTS: AppSettings = {
@@ -49,6 +50,7 @@ export const HARDCODED_DEFAULTS: AppSettings = {
   default_md_view: 'preview',
   discord_presence: true,
   default_shell: 'powershell',
+  confirm_delete: true,
 };
 
 export type SettingsScope = 'global' | 'workspace';

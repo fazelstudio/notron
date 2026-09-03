@@ -28,7 +28,6 @@
 
   function handleAdd(val: string) {
     if (onselect) onselect(val);
-    // Keep focus on input if needed, but we rely on external state for query clearing
   }
 
   function handleRemove(val: string) {

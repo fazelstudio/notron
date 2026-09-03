@@ -79,6 +79,8 @@
   --text-muted: #444444;
   --text-inverse: #ffffff;
   --text-on-accent: #ffffff;
+  /* DECO-002: Distinct dimmed color for git-ignored files */
+  --color-text-ignored: #888888;
 
   --icon-default: #000000;
   --icon-muted: #444444;
@@ -97,6 +99,9 @@
   --color-status-warning: #9a6700;
   --color-status-info: #0078d4;
   --color-status-success: #1a7f37;
+
+  /* Git decoration: Untracked files (teal/green, not info-blue) */
+  --color-untracked: #1a7f37;
 
   --elevated-shadow-sm:
     0 1px 2px var(--bg-active);
@@ -194,6 +199,8 @@
   --text-muted: #cccccc;
   --text-inverse: #000000;
   --text-on-accent: #ffffff;
+  /* DECO-002: Distinct dimmed color for git-ignored files */
+  --color-text-ignored: #555555;
 
   --icon-default: #ffffff;
   --icon-muted: #cccccc;
@@ -212,6 +219,9 @@
   --color-status-warning: #d29922;
   --color-status-info: #3794ff;
   --color-status-success: #3fb950;
+
+  /* Git decoration: Untracked files (teal/green, not info-blue) */
+  --color-untracked: #3fb950;
 
   --elevated-shadow-sm:
     0 1px 2px var(--bg-active);
@@ -276,6 +286,42 @@
 /* ── CodeMirror overrides ────────────────────────────────────────────────────── */
 .prose code::before { content: none !important; }
 .prose code::after { content: none !important; }
+
+/* ── Markdown preview code block copy button ────────────────────────────────── */
+.md-code-block {
+  position: relative;
+}
+.md-code-block pre {
+  margin: 0;
+}
+.md-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+.md-code-block:hover .md-copy-btn {
+  opacity: 1;
+}
+.md-copy-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.md-copy-btn.md-copied {
+  color: var(--color-success, #4ade80);
+  opacity: 1;
+}
 
 body {
   background-color: var(--bg-canvas);
@@ -360,10 +406,21 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
 .hover-scrollbar:hover::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
-
-.cm-editor:has(.cm-minimap-container:not([style*="display: none"])) .cm-content {
-  margin-right: 164px !important;
+.hover-scrollbar {
+  overflow-y: overlay !important;
+  scrollbar-gutter: stable;
 }
+
+/* The gap value is written by Editor.svelte (syncStickyScrollOffset) from the
+   minimap's REAL measured geometry — the @replit plugin writes its own inline
+   width (120px, scaled down on narrow editors), so a hardcoded 150px left a
+   30px strip where text and the active-line band stopped short of the minimap
+   border. Falls back to the legacy constant until JS measures. */
+.cm-editor:has(.cm-minimap-container:not([style*="display: none"])) .cm-content {
+  margin-right: var(--notron-minimap-gap, 150px) !important;
+}
+
+
 
 .cm-scroller::-webkit-scrollbar:horizontal {
   display: none !important;

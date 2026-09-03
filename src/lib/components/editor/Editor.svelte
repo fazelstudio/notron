@@ -11,14 +11,14 @@
   import { notronBreadcrumbsTheme, syncBreadcrumbBarIcons, ensureBreadcrumbObserver, disposeBreadcrumbObserver } from '../../editor/breadcrumbs';
   import { COMMON_EXTENSIONS, COMMON_EXTENSIONS_LARGE_FILE } from '../../editor/commonExtensions';
   import { searchResultHighlightExtensions, setSearchResultHighlight, clearSearchResultHighlight } from '../../editor/searchResultHighlight';
-  import { materialIconState } from '../../utils/materialIconRenderer.svelte';
+  import { materialIconState } from '../../extensions/material-icons/iconRenderer.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
   import HorizontalScrollbar from '../common/HorizontalScrollbar.svelte';
   import EditorSearchWidget from './EditorSearchWidget.svelte';
   import EditorFoldMarker from '../common/EditorFoldMarker.svelte';
   import GitGutterPeekButton from '../common/GitGutterPeekButton.svelte';
   import ContextMenu, { type MenuItem } from '../common/ContextMenu.svelte';
-  import { getThemeExtension } from '../../themes';
+  import { getThemeExtension } from '../../themes/index';
   import { showMinimap } from '@replit/codemirror-minimap';
   import { invoke } from '@tauri-apps/api/core';
   import { editorStore } from '../../stores/editor';
@@ -26,8 +26,9 @@
   import { uiStore } from '../../stores/ui';
   import { themeStore } from '../../stores/theme';
   import { getGitFileContent, stageFile } from '../../services/git';
-  import { renderBreadcrumbPathIcon } from '../../utils/breadcrumbPathIcons';
-  import { LARGE_FILE_THRESHOLD_BYTES, SEARCH_RESULT_HIGHLIGHT_MS } from '../../constants';
+  import { renderBreadcrumbPathIcon } from '../../extensions/material-icons/breadcrumbPathIcons';
+  import { LARGE_FILE_THRESHOLD_BYTES, SEARCH_RESULT_HIGHLIGHT_MS, MINIMAP_WIDTH, EDITOR_SCROLLBAR_WIDTH } from '../../constants';
+  import { isRunnableFile } from '../../utils/runTargets';
 
   let { tabId, content, filePath, children, topRightOverlay, hideContent = false, isHeaderOnly = false, readOnly = false }: { tabId: string; content: string; filePath: string; children?: Snippet; topRightOverlay?: Snippet; hideContent?: boolean; isHeaderOnly?: boolean; readOnly?: boolean } = $props();
 
@@ -47,7 +48,7 @@
   let currentTab = $derived($tabsStore.find((t: any) => t.id === tabId));
   let tabStatus = $derived(currentTab?.status);
   let isLargeFile = $derived(currentTab?.isLargeFile || (content && content.length > LARGE_FILE_THRESHOLD_BYTES));
-  
+
   const foldMarkers = new Set<{ app: any, marker: HTMLElement }>();
 
   const customFoldGutter = foldGutter({
@@ -151,6 +152,7 @@
   const gutterCompartment = new Compartment();
   const gitGutterCompartment = new Compartment();
   const breadcrumbsCompartment = new Compartment();
+  const stickyScrollCompartment = new Compartment();
   const readOnlyCompartment = new Compartment();
 
   /** Builds the mini-map extensions, or an empty array when no mini-map is wanted. */
@@ -163,9 +165,9 @@
           const baseline = state.facet(baselineContentFacet);
           const hunks = baseline ? (state.field(hunksField, false) ?? []) : [];
           for (const hunk of hunks) {
-            let color = 'var(--color-success)'; // default success green
-            if (hunk.type === 'modified') color = 'var(--color-info)'; // info blue
-            else if (hunk.type === 'deleted') color = 'var(--color-error)'; // error red
+            let color = 'var(--color-success)';
+            if (hunk.type === 'modified') color = 'var(--color-info)';
+            else if (hunk.type === 'deleted') color = 'var(--color-error)';
             if (hunk.type === 'deleted') {
               const line = Math.min(hunk.fromB, state.doc.lines);
               if (line >= 1) gitGutterRecord[line] = color;
@@ -250,12 +252,64 @@
    * sticky bar below it. The installed plugin never writes `top` again, so a
    * one-time sync per mount/geometry/theme change is enough.
    */
+  let minimapResizeObserver: ResizeObserver | null = null;
+  let observedMinimapEl: HTMLElement | null = null;
+
+  /**
+   * The @replit/codemirror-minimap writes its own INLINE width (120px, scaled
+   * down proportionally once the editor gets narrower than ~6×120px), which
+   * overrides our CSS `width:150px`. So the sticky bar must be sized from the
+   * minimap's REAL measured left edge — a `MINIMAP_WIDTH`-based constant leaves
+   * a visible gap. Watch the minimap element so width changes (window resize
+   * crossing the scaling threshold) re-sync the sticky bar automatically.
+   */
+  function trackMinimapResizes(el: HTMLElement) {
+    if (typeof ResizeObserver === 'undefined') return;
+    if (observedMinimapEl === el) return;
+    minimapResizeObserver?.disconnect();
+    observedMinimapEl = el;
+    minimapResizeObserver = new ResizeObserver(() => syncStickyScrollOffset());
+    minimapResizeObserver.observe(el);
+  }
+
   function syncStickyScrollOffset() {
     if (!editorView) return;
+
+    // ── Content right inset (text wrap edge + active-line band) ──
+    // Measure the minimap's true geometry. Runs even when the sticky bar is
+    // absent, so content alignment never depends on the sticky setting.
+    const minimap = editorView.dom.querySelector<HTMLElement>('.cm-minimap-container');
+    let rightInsetPx = EDITOR_SCROLLBAR_WIDTH;
+    let contentGapPx = '0px';
+    if (minimap && minimap.offsetWidth > 0) {
+      const editorRect = editorView.dom.getBoundingClientRect();
+      const inset = Math.round(editorRect.right - minimap.getBoundingClientRect().left);
+      if (inset > rightInsetPx) rightInsetPx = inset;
+      trackMinimapResizes(minimap);
+      // Margin for .cm-content so text AND the active-line band end exactly on
+      // the minimap border. Measured against the SCROLLER's clientWidth so the
+      // vertical scrollbar presence is already factored in.
+      const mapOffset = Math.round(minimap.getBoundingClientRect().left - editorRect.left);
+      const scrollerWidth = editorView.scrollDOM.clientWidth;
+      if (scrollerWidth > mapOffset) contentGapPx = `${scrollerWidth - mapOffset}px`;
+    } else {
+      minimapResizeObserver?.disconnect();
+      observedMinimapEl = null;
+    }
+    // Consumed by app.css: .cm-content { margin-right: var(--notron-minimap-gap) }
+    editorView.dom.style.setProperty('--notron-minimap-gap', contentGapPx);
+
     const sticky = editorView.dom.querySelector<HTMLElement>('.cm-stickyscroll-container');
+    if (!sticky) return;
+    // When breadcrumbs are disabled, .cm-panels-top is absent — reset top to 0.
+    // When breadcrumbs are enabled, offset sticky scroll below the panel.
     const panels = editorView.dom.querySelector<HTMLElement>('.cm-panels.cm-panels-top');
-    if (!sticky || !panels) return;
-    sticky.style.top = `${panels.offsetHeight}px`;
+    sticky.style.top = panels ? `${panels.offsetHeight}px` : '0px';
+
+    // Sticky bar ends exactly where the minimap begins (or the scrollbar),
+    // matching the content's alignment in both cases.
+    sticky.style.setProperty('width', `calc(100% - ${rightInsetPx}px)`, 'important');
+    sticky.style.setProperty('right', 'auto', 'important');
   }
 
   function openFileFromBreadcrumbs(path: string) {
@@ -268,9 +322,11 @@
         scrollDOM = editorView!.scrollDOM;
     }
     
-    // Save old state
-    if (currentTabId && editorStates.has(currentTabId)) {
-        editorStates.set(currentTabId, editorView!.state);
+    // Save old state — always save the live editor view state for the
+    // current tab, not just when the Map already has an entry (the Map
+    // may be empty in single-tab sessions or after rapid view-mode switches).
+    if (currentTabId && editorView) {
+        editorStates.set(currentTabId, editorView.state);
     }
     currentTabId = tabId;
 
@@ -279,12 +335,11 @@
     // CodeMirror manages its own internal state (immutable document tree).
     // Svelte only needs the content at specific moments (see 4.2).
     let contentExtractTimer: ReturnType<typeof setTimeout> | null = null;
-    const CONTENT_DEBOUNCE_MS = 500; // Extract only after user stops typing
+    const CONTENT_DEBOUNCE_MS = 500;
 
     const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
       if (update.docChanged) {
-        docChangedCount++; // Trigger search match updates
-        // Debounced extraction — don't extract on every keystroke
+        docChangedCount++;
         if (contentExtractTimer) clearTimeout(contentExtractTimer);
         contentExtractTimer = setTimeout(() => {
           if (!editorView || isHeaderOnly) return;
@@ -304,7 +359,6 @@
       }
 
       if (update.selectionSet || update.geometryChanged) {
-        // Measure gutter width efficiently on geometry change
         if (update.geometryChanged && editorEl) {
           const gutters = editorEl.querySelector('.cm-gutters');
           if (gutters) {
@@ -329,15 +383,15 @@
 
     let extBase = [
       ...(isLargeFile ? COMMON_EXTENSIONS_LARGE_FILE : COMMON_EXTENSIONS),
-      ...(filePath.toLowerCase().endsWith('.svg') ? [] : [stickyScroll()]),
-      breadcrumbsCompartment.of(breadcrumbs({
+      stickyScrollCompartment.of(!isLargeFile && !filePath.toLowerCase().endsWith('.svg') && $ui.isStickyScrollEnabled ? stickyScroll() : []),
+      breadcrumbsCompartment.of($ui.isBreadcrumbsEnabled ? breadcrumbs({
         filePath,
         workspaceRoot: $ui.explorerRoot || undefined,
         readDirectory: readBreadcrumbDirectory,
         onOpenFile: openFileFromBreadcrumbs,
         showPathHeader: false,
         renderPathIcon: renderBreadcrumbPathIcon,
-      })),
+      }) : []),
       notronBreadcrumbsTheme,
       keymap.of([{
         key: 'Mod-f',
@@ -489,26 +543,34 @@
     editorView.dispatch({
       effects: minimapCompartment.reconfigure(enabled ? minimapExtension() : []),
     });
+    // Defer to next paint to let the minimap DOM update first
+    requestAnimationFrame(() => syncStickyScrollOffset());
   });
 
   $effect(() => {
-    // Reactively reconfigure breadcrumbs when icon_theme or filePath changes.
+    // Reactively reconfigure breadcrumbs when icon_theme, filePath, or isBreadcrumbsEnabled changes.
     settings.effectiveSettings.icon_theme;
     const currentFilePath = filePath;
     const currentRoot = $ui.explorerRoot;
+    const breadcrumbsEnabled = $ui.isBreadcrumbsEnabled;
     if (!editorView) return;
     editorView.dispatch({
-      effects: breadcrumbsCompartment.reconfigure(breadcrumbs({
+      effects: breadcrumbsCompartment.reconfigure(breadcrumbsEnabled ? breadcrumbs({
         filePath: currentFilePath,
         workspaceRoot: currentRoot || undefined,
         readDirectory: readBreadcrumbDirectory,
         onOpenFile: openFileFromBreadcrumbs,
         showPathHeader: false,
         renderPathIcon: renderBreadcrumbPathIcon,
-      }))
+      }) : [])
     });
+    // Defer to next paint — CodeMirror flushes DOM changes asynchronously, so
+    // .cm-panels-top may still be in the DOM immediately after dispatch().
+    // requestAnimationFrame guarantees the panel is added/removed before we measure.
     requestAnimationFrame(() => {
-      if (editorView) {
+      if (!editorView) return;
+      syncStickyScrollOffset();
+      if (breadcrumbsEnabled) {
         syncBreadcrumbBarIcons(editorView);
         setTimeout(() => {
           if (editorView) syncBreadcrumbBarIcons(editorView);
@@ -518,14 +580,25 @@
   });
 
   $effect(() => {
-    // Lightweight: when a material icon finishes loading, fill it into the bar
-    // without reconfiguring the whole plugin (preload bumps this a lot).
+    const enabled = !isLargeFile && !filePath.toLowerCase().endsWith('.svg') && $ui.isStickyScrollEnabled;
+    if (!editorView) return;
+    editorView.dispatch({
+      effects: stickyScrollCompartment.reconfigure(enabled ? stickyScroll() : []),
+    });
+    // Defer so the stickyscroll plugin has mounted/unmounted its DOM before we sync.
+    requestAnimationFrame(() => syncStickyScrollOffset());
+  });
+
+  $effect(() => {
+    // Lightweight: when the light/dark icon variant flips, re-fill the bar's
+    // icons without reconfiguring the whole breadcrumbs plugin.
     materialIconState.version;
     if (!editorView) return;
     syncBreadcrumbBarIcons(editorView);
   });
 
   async function loadGitBaseline() {
+    // Skip git gutter for large files (performance)
     if (isLargeFile || !editorView || !$ui.explorerRoot) return;
     const explorerRoot = $ui.explorerRoot;
 
@@ -538,10 +611,29 @@
       const baseline = await getGitFileContent(explorerRoot, relativePath, 'HEAD');
       // Check editorView again after async operation - component may have been destroyed
       if (!editorView) return;
+
+      if (baseline === null) {
+        // File is not in HEAD: it's new, gitignored, or untracked.
+        // Keep the gutter mounted with the file's own content as baseline:
+        // zero diff means no markers are drawn, but the spacer still reserves
+        // the column width so tracked and untracked files lay out identically
+        // (no horizontal shift shortly after opening an ignored file).
+        editorView.dispatch({
+          effects: gitGutterCompartment.reconfigure([
+            gitGutter({
+              baseline: editorView.state.doc.toString(),
+              onStageHunk: () => {},
+            }),
+            keymap.of(gitGutterKeymap),
+          ])
+        });
+        return;
+      }
+
       editorView.dispatch({
         effects: gitGutterCompartment.reconfigure([
           gitGutter({
-            baseline: baseline ?? content ?? '',
+            baseline,
             onStageHunk: (_hunk) => stageFile(explorerRoot, relativePath),
           }),
           keymap.of(gitGutterKeymap),
@@ -557,7 +649,6 @@
   }
 
   $effect(() => {
-    // Whenever tabStatus changes (e.g. to saved) or on mount
     tabStatus;
     if (editorView) {
       loadGitBaseline();
@@ -738,7 +829,9 @@
   }
 
   let style = $derived(`font-size: ${settings.effectiveSettings.font_size}px; font-family: ${settings.effectiveSettings.font_family};`);
-  let rightGap = $derived((!isLargeFile && $ui.isMinimapEnabled) ? 150 : 0);
+  // rightGap = space reserved to the right of the horizontal scrollbar thumb
+  // so it doesn't overlap the minimap or the vertical scrollbar track.
+  let rightGap = $derived((!isLargeFile && $ui.isMinimapEnabled) ? MINIMAP_WIDTH + EDITOR_SCROLLBAR_WIDTH : EDITOR_SCROLLBAR_WIDTH);
 
   onMount(() => {
     setupEditor();
@@ -762,10 +855,13 @@
     if (editorView.state.doc.toString() === newContent) return;
     const tab = editorStore.getTabsSnapshot().find((t: any) => t.id === currentTabId);
     if (tab?.isModified) return;
-    // Baseline check: the pre-update doc must still match the tab's baseline
-    // or the new content itself (fresh open) — anything else means in-flight
-    // user edits.
-    if (tab && tab.originalContent !== null
+    // Allow sync when the editor doc is empty (fresh open or after view-mode
+    // switch).  The baseline check below is meant to avoid clobbering in-flight
+    // user edits, but after setInitialContent the store is already updated so
+    // originalContent === tab.content === newContent, making the old check skip
+    // the sync and leave the editor blank.
+    if (editorView.state.doc.length > 0
+        && tab && tab.originalContent !== null
         && editorView.state.doc.toString() !== tab.originalContent
         && tab.content !== editorView.state.doc.toString()) return;
     editorView.dispatch({
@@ -801,7 +897,6 @@
   }
   
   (() => {
-      // Re-run setupEditor when tabId changes
       if (tabId && tabId !== currentTabId && editorView) {
           setupEditor();
       }
@@ -813,12 +908,23 @@
       pendingHighlightTimer = null;
     }
     disposeBreadcrumbObserver();
+    minimapResizeObserver?.disconnect();
+    minimapResizeObserver = null;
+    observedMinimapEl = null;
     window.removeEventListener('editor:action', handleAction);
     window.removeEventListener('editor:append-chunk', handleAppendChunk);
     window.removeEventListener('editor:sync-content', handleSyncContent);
-    // Instead of just current tab, save history for all tracked states
     if (editorView) {
       if (!isHeaderOnly) {
+        // Save the LIVE editor state for the current tab first — the Map may be
+        // stale or empty (single-tab session, rapid view-mode switches) and the
+        // 500ms contentExtractTimer may not have fired before destruction.
+        if (currentTabId) {
+          editorStates.set(currentTabId, editorView.state);
+        }
+        // Save undo history for ALL tracked tabs (shared Map) so it persists
+        // across view-mode switches, but only sync CONTENT for the CURRENT tab
+        // to avoid overwriting correct store content with stale cached states.
         for (const [id, state] of editorStates.entries()) {
           const t = editorStore.getTabsSnapshot().find(tb => tb.id === id);
           const isL = t?.isLargeFile || (state.doc.length > 250000);
@@ -830,9 +936,11 @@
                 }
              } catch(e) {}
           }
-          editorStore.updateContent(id, state.doc.toString());
         }
+        // Sync content only for the current tab — other tabs' content is kept
+        // up-to-date by the debounced contentExtractTimer during editing.
         if (currentTabId) {
+          editorStore.updateContent(currentTabId, editorView.state.doc.toString());
             const pos = editorView.state.selection.main.head;
             const line = editorView.state.doc.lineAt(pos);
             editorStore.updateCursor(currentTabId, line.number, pos - line.from + 1);
@@ -843,14 +951,28 @@
       editorView = null;
     }
     
-    // Clean up all fold markers on destroy
     for (const item of foldMarkers) {
       unmount(item.app);
     }
     foldMarkers.clear();
   });
 
+  let canRunCurrentFile = $derived(
+    !!currentTab?.path &&
+    !currentTab.path.startsWith('Untitled') &&
+    currentTab.language !== 'welcome' &&
+    isRunnableFile(currentTab.path)
+  );
+
   let editorContextMenuItems: MenuItem[] = $derived([
+    {
+      id: 'run-code',
+      label: 'Run Code',
+      shortcut: 'Ctrl+F5',
+      action: () => { import('../../services/runService').then(m => m.runCurrentFile()); },
+      disabled: !canRunCurrentFile
+    },
+    { id: 'sep-run', label: '', action: () => {}, separator: true },
     {
       id: 'goto-definition',
       label: 'Go to Definition',

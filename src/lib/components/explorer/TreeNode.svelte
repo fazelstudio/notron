@@ -3,9 +3,9 @@
   import { Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, Dot } from 'lucide-svelte';
   import { settingsStore } from '../../stores/settings.svelte';
   import { gitDecorationStore } from '../../stores/gitDecoration';
-  import { getFileIcon } from '../../utils/fileIcons';
-  import { getGitStatusStyle, getGitBadgeStyle } from '../../utils/gitStatusStyles';
-  import MaterialIcon from '../common/MaterialIcon.svelte';
+  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
+  import { getGitStatusStyle, getGitBadgeStyle, getIgnoredStyle } from '../../utils/gitStatusStyles';
+  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
 
   let { 
     node, 
@@ -70,6 +70,9 @@
   const gitIconStyle = $derived(getGitStatusStyle(gitDecoration?.code));
   const gitFileNameStyle = $derived(getGitStatusStyle(gitDecoration?.code));
   const gitBadgeStyle = $derived(getGitBadgeStyle(gitDecoration?.code, gitDecoration?.is_rollup));
+
+  // DECO-002: Dedicated dim style for ignored files (not just opacity)
+  const ignoredStyle = $derived(isGitIgnored ? getIgnoredStyle() : '');
 
   function handleClick(e: MouseEvent) {
     e.stopPropagation();
@@ -163,7 +166,7 @@
         {/if}
       {:else if iconTheme === 'material'}
         <!-- We use getMaterialFolderIcon which maps to folder-src, folder-public, etc. fallback is folder-base -->
-        <MaterialIcon name={node.name} isDir size={14} />
+        <MaterialIcon name={node.name} isDir size={14} isOpen={node.isExpanded} />
       {/if}
     </span>
   {:else}
@@ -190,7 +193,7 @@
     class:text-primary={isActive}
     class:text-secondary={!isActive && !gitDecoration && !isGitIgnored}
     class:text-muted={isGitIgnored && !gitDecoration && !isActive}
-    style={gitFileNameStyle}
+    style="{gitFileNameStyle}{ignoredStyle ? '; ' + ignoredStyle : ''}"
   >
     {node.name}
   </span>

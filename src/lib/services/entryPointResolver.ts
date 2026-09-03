@@ -29,8 +29,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { RunConfiguration } from '../stores/run';
 
-// ── Public model ────────────────────────────────────────────────────────────
-
 export type EntryTier = 'manifest' | 'framework' | 'heuristic' | 'active';
 
 export interface ResolvedEntry {
@@ -52,15 +50,13 @@ interface CacheEntry {
   candidates: ResolvedEntry[];
 }
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_PREFIX = 'notron:entryResolver:';
 
 type Pyproject = {
   project?: { scripts?: Record<string, string> };
   tool?: { poetry?: { scripts?: Record<string, string> } };
 };
-
-// ── small FS helpers ────────────────────────────────────────────────────────
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -90,8 +86,6 @@ async function manifestMtime(path: string): Promise<number> {
 function joinPath(...parts: string[]): string {
   return parts.join('\\');
 }
-
-// ── path helpers ────────────────────────────────────────────────────────────
 
 function normalize(p: string): string {
   return p.replace(/\\/g, '/');
@@ -138,7 +132,8 @@ const NODE_HEURISTIC = [
 ];
 const PY_HEURISTIC = ['main.py', 'app.py', '__main__.py', 'src/main.py', 'src/app.py'];
 
-// ── package.json ────────────────────────────────────────────────────────────
+/** Max heuristic candidates surfaced at once (keeps the dropdown readable). */
+const HEURISTIC_CANDIDATE_LIMIT = 3;
 
 interface Pkg {
   main?: string;
@@ -146,6 +141,27 @@ interface Pkg {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+}
+
+export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
+
+/** Script-runner invocation per package manager ("run" keyword differences). */
+const PM_RUNNERS: Record<PackageManager, (script: string) => string> = {
+  npm: (s) => `npm run ${s}`,
+  pnpm: (s) => `pnpm run ${s}`,
+  yarn: (s) => `yarn ${s}`,
+  bun: (s) => `bun run ${s}`,
+};
+
+/**
+ * Detect the project's package manager from its lockfile so dev-server
+ * commands run through the toolchain the project actually uses.
+ */
+async function detectPackageManager(root: string): Promise<PackageManager> {
+  if (await fileExists(joinPath(root, 'bun.lockb')) || await fileExists(joinPath(root, 'bun.lock'))) return 'bun';
+  if (await fileExists(joinPath(root, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (await fileExists(joinPath(root, 'yarn.lock'))) return 'yarn';
+  return 'npm';
 }
 
 function parsePackageJson(raw: string): Pkg | null {
@@ -239,6 +255,16 @@ function detectNodeFramework(pkg: Pkg): ResolvedEntry | null {
   return null;
 }
 
+/**
+ * Wrap a raw binary dev-server command so it resolves the project-local
+ * binary from node_modules/.bin instead of requiring a global install.
+ * `npx --no-install` never downloads; it fails fast when the tool is absent.
+ */
+function localizeBinCommand(command: string): string {
+  if (/^(npm|npx|pnpm|yarn|bun|bunx|node|deno)\b/.test(command)) return command;
+  return `npx --no-install ${command}`;
+}
+
 function buildNodeCandidate(pkgDir: string, entry: string, tier: EntryTier, label: string): ResolvedEntry | null {
   if (!isNodeFile(entry)) return null;
   const abs = isAbsolutePath(entry) ? entry : resolvePath(pkgDir, entry);
@@ -252,11 +278,27 @@ async function resolveNode(root: string, activeDir?: string): Promise<ResolvedEn
 
   if (near) {
     const pkg = near.pkg;
+    const pm = await detectPackageManager(pkgDir);
 
-    // 1. scripts (parsed command, not just the script name)
+    // 1. scripts — the project's own definitions win over any generic
+    //    framework guess because they carry the developer's flags
+    //    ("vite --port 3000" must not lose "--port 3000").
+    const usedScriptKeys = new Set<string>();
     for (const key of ['dev', 'start', 'debug']) {
       const script = pkg.scripts?.[key];
       if (!script) continue;
+      usedScriptKeys.add(key);
+      out.push({
+        name: `${key} script`,
+        type: 'node',
+        program: '',
+        cwd: pkgDir,
+        source: `package.json#scripts.${key}`,
+        tier: 'manifest',
+        command: PM_RUNNERS[pm](key),
+      });
+      // When the script points at a concrete file, also offer a direct
+      // runtime launch (node <file> <args>).
       const entry = extractScriptEntry(script);
       if (entry) {
         const cand = buildNodeCandidate(pkgDir, entry, 'manifest', `${key} script`);
@@ -264,20 +306,21 @@ async function resolveNode(root: string, activeDir?: string): Promise<ResolvedEn
       }
     }
 
-    // framework-aware override (evaluated before generic heuristics)
+    // framework-aware override (evaluated before generic heuristics).
+    // Skipped when an equivalent dev/start script exists — the raw binary
+    // command would only shadow the user's configured flags.
     const framework = detectNodeFramework(pkg);
-    if (framework) {
+    if (framework && !usedScriptKeys.has('dev') && !usedScriptKeys.has('start')) {
       framework.cwd = pkgDir;
+      framework.command = localizeBinCommand(framework.command || '');
       out.push(framework);
     }
 
-    // (2) main field
     if (pkg.main && out.length === 0) {
       const c = buildNodeCandidateP(pkgDir, pkg.main, 'manifest', 'package.json#main');
       if (c) out.push(c);
     }
 
-    // (3) exports field
     const exportsEntry = pkg.main ? null : resolveExports(pkg.exports);
     if (exportsEntry && out.length === 0) {
       const c = buildNodeCandidateP(pkgDir, exportsEntry, 'manifest', 'package.json#exports');
@@ -285,14 +328,16 @@ async function resolveNode(root: string, activeDir?: string): Promise<ResolvedEn
     }
   }
 
-  // (4) heuristic file names (only when nothing above produced anything)
+  // (4) heuristic file names (only when nothing above produced anything).
+  // Every existing candidate is surfaced — when both root index.js and
+  // src/index.js exist the user picks in the dropdown instead of us guessing.
   if (out.length === 0) {
     for (const rel of NODE_HEURISTIC) {
       const p = joinPath(root, ...rel.split('/'));
       if (await fileExists(p)) {
         const c = buildNodeCandidateP(root, p, 'heuristic', `heuristic ${rel}`);
         if (c) out.push(c);
-        break;
+        if (out.length >= HEURISTIC_CANDIDATE_LIMIT) break;
       }
     }
   }
@@ -303,8 +348,6 @@ async function resolveNode(root: string, activeDir?: string): Promise<ResolvedEn
 function buildNodeCandidateP(pkgDir: string, entry: string, tier: EntryTier, label: string): ResolvedEntry | null {
   return buildNodeCandidate(pkgDir, entry, tier, label);
 }
-
-// ── pyproject.toml (lightweight parser — only the tables we need) ───────────
 
 function parseTomlLoose(raw: string): Record<string, any> {
   const root: Record<string, any> = {};
@@ -353,6 +396,9 @@ async function moduleToPath(module: string, root: string): Promise<string | null
 
 async function detectPythonFramework(root: string, pyprojectRaw: string | null): Promise<ResolvedEntry | null> {
   if (await fileExists(joinPath(root, 'manage.py'))) {
+    // Pin the venv interpreter (when present) so the dev server runs in the
+    // environment the project was provisioned with.
+    const py = await resolvePythonInterpreter(root);
     return {
       name: 'Django (runserver)',
       type: 'python',
@@ -361,7 +407,7 @@ async function detectPythonFramework(root: string, pyprojectRaw: string | null):
       source: 'Django manage.py',
       tier: 'framework',
       framework: 'django',
-      command: 'python manage.py runserver',
+      command: `${py} manage.py runserver`,
     };
   }
   if (pyprojectRaw && /fastapi|uvicorn/i.test(pyprojectRaw)) {
@@ -416,7 +462,6 @@ async function resolvePython(root: string): Promise<ResolvedEntry[]> {
   const workspaceName = basename(root) || 'project';
   const pyprojectRaw = await readText(joinPath(root, 'pyproject.toml'));
 
-  // (1) pyproject entry scripts
   if (pyprojectRaw != null) {
     const parsed = parseTomlLoose(pyprojectRaw) as unknown as Pyproject;
     const scripts = parsed?.project?.scripts || parsed?.tool?.poetry?.scripts;
@@ -433,17 +478,17 @@ async function resolvePython(root: string): Promise<ResolvedEntry[]> {
     }
   }
 
-  // (2) framework-aware
   const framework = await detectPythonFramework(root, pyprojectRaw);
   if (framework) out.push(framework);
 
-  // (3) heuristics (only if nothing yet)
+  // (3) heuristics (only if nothing yet). Multiple candidates are surfaced —
+  // root main.py vs src/main.py is a user choice, not a silent guess.
   if (out.length === 0) {
     for (const rel of PY_HEURISTIC) {
       const p = joinPath(root, ...rel.split('/'));
       if (await fileExists(p)) {
         out.push(entryFromPython(p, rel, 'heuristic'));
-        break;
+        if (out.length >= HEURISTIC_CANDIDATE_LIMIT) break;
       }
     }
     const pkgMain = joinPath(root, workspaceName, '__main__.py');
@@ -469,23 +514,21 @@ export async function resolvePythonInterpreter(root: string): Promise<string> {
   return 'python';
 }
 
-// ── dedupe ──────────────────────────────────────────────────────────────────
-
 function dedupe(list: (ResolvedEntry | null)[]): ResolvedEntry[] {
   const seen = new Set<string>();
   const out: ResolvedEntry[] = [];
   for (const c of list) {
     if (!c) continue;
     if (!c.program && !c.command) continue;
-    const sig = `${c.type}:${c.program}`;
+    // Command-carrying entries (dev servers) must not collapse into
+    // file-based ones that share the same empty program path.
+    const sig = `${c.type}:${c.program}:${c.command || ''}`;
     if (seen.has(sig)) continue;
     seen.add(sig);
     out.push(c);
   }
   return out;
 }
-
-// ── caching ─────────────────────────────────────────────────────────────────
 
 function cacheKey(workspace: string): string {
   try {
@@ -511,7 +554,6 @@ function saveCache(workspace: string, sig: string, candidates: ResolvedEntry[]) 
   try {
     localStorage.setItem(cacheKey(workspace), JSON.stringify({ version: CACHE_VERSION, sig, candidates }));
   } catch {
-    // ignore quota failures
   }
 }
 
@@ -519,15 +561,9 @@ export function invalidateEntryCache(workspace: string) {
   try {
     localStorage.removeItem(cacheKey(workspace));
   } catch {
-    // ignore
   }
 }
 
-// ── public API ──────────────────────────────────────────────────────────────
-
-// ── Go & Ruby — manifest-based entry resolution ─────────────────────────────
-
-/** Basic heuristic resolution for Go and Ruby workspaces. */
 async function resolveGoRuby(root: string): Promise<ResolvedEntry[]> {
   const out: ResolvedEntry[] = [];
   const cwd = root;
@@ -537,7 +573,10 @@ async function resolveGoRuby(root: string): Promise<ResolvedEntry[]> {
     for (const rel of ['cmd/main.go', 'cmd/app/main.go', 'main.go']) {
       const p = joinPath(root, ...rel.split('/'));
       if (await fileExists(p)) {
-        out.push({ name: 'Go: main package', type: 'go', program: p, cwd, source: `go.mod → ${rel}`, tier: 'heuristic' });
+        const dir = dirname(p);
+        // `go run .` compiles the whole main package, so multi-file
+        // packages work where `go run main.go` would fail.
+        out.push({ name: 'Go: main package', type: 'go', program: p, cwd: dir, source: `go.mod → ${rel}`, tier: 'heuristic', command: 'go run .' });
         break;
       }
     }
@@ -560,8 +599,6 @@ async function resolveGoRuby(root: string): Promise<ResolvedEntry[]> {
 
   return dedupe(out);
 }
-
-// ── Rust (Cargo) & Deno ─────────────────────────────────────────────────────
 
 /** JSON parse with trailing-comma + comment tolerance (deno.jsonc). */
 function parseJsonLoose(raw: string): any {
@@ -672,7 +709,6 @@ export async function resolveEntries(root: string, activeDir?: string): Promise<
   return ranked;
 }
 
-/** Convert a resolved entry into a detected RunConfiguration. */
 export function entryToRunConfig(entry: ResolvedEntry): RunConfiguration {
   return {
     name: entry.name,

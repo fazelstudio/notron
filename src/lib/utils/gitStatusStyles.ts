@@ -2,24 +2,30 @@
  * Git status color helpers, shared by the file tree, source control panel
  * and any other surface that decorates files with their git state.
  *
- * Codes follow the VSCode convention: U / A / R / C = green (success),
- * M = yellow (warning), D = red (error), Conflict = accent.
+ * Colors follow DECO-001 semantic palette:
+ *   Conflict = accent/red, Deleted = error/red,
+ *   Modified/Renamed = warning/yellow, Added = success/green,
+ *   Untracked = teal, Ignored = dimmed foreground.
  */
 
-function statusTone(code: string | undefined): 'success' | 'warning' | 'error' | 'accent' | 'muted' {
+function statusTone(code: string | undefined): 'conflict' | 'deleted' | 'modified' | 'added' | 'untracked' | 'ignored' | 'muted' {
   if (!code) return 'muted';
-  if (code === 'U' || code === 'A' || code === 'R' || code === 'C') return 'success';
-  if (code === 'M') return 'warning';
-  if (code === 'D') return 'error';
-  if (code === 'Conflict') return 'accent';
+  if (code === 'Conflict') return 'conflict';
+  if (code === 'D') return 'deleted';
+  if (code === 'M' || code === 'R') return 'modified';
+  if (code === 'A' || code === 'C') return 'added';
+  if (code === 'U') return 'untracked';
+  if (code === 'Ignored') return 'ignored';
   return 'muted';
 }
 
-const TONE_COLOR: Record<'success' | 'warning' | 'error' | 'accent' | 'muted', string> = {
-  success: 'var(--color-success)',
-  warning: 'var(--color-warning)',
-  error: 'var(--color-error)',
-  accent: 'var(--accent)',
+const TONE_COLOR: Record<string, string> = {
+  conflict: 'var(--color-error)',
+  deleted: 'var(--color-error)',
+  modified: 'var(--color-warning)',
+  added: 'var(--color-success)',
+  untracked: 'var(--color-untracked)',
+  ignored: 'var(--color-text-ignored, #5a5a5a)',
   muted: 'var(--text-muted)',
 };
 
@@ -48,4 +54,65 @@ export function getExpandedFileStatusStyle(code: string): string {
 /** Single-character badge shown next to a file: '!' for conflicts, the code otherwise. */
 export function getGitStatusBadgeChar(code: string | undefined): string {
   return code === 'Conflict' ? '!' : code ?? '';
+}
+
+/**
+ * DECO-002: Dedicated dim style for ignored files/folders.
+ * Uses a specific foreground color rather than generic opacity,
+ * ensuring clear visual distinction from normal text.
+ */
+export function getIgnoredStyle(): string {
+  return 'color: var(--color-text-ignored, #5a5a5a)';
+}
+
+/**
+ * DECO-005: Human-readable tooltip for git status codes.
+ * Format: "filename - Status" (matches VSCode behavior).
+ * For folder rollups: "folder - Contains [status] items" or "folder - Contains emphasized items".
+ * If symlinkTarget is provided, shows "filename - Symbolic Link to target".
+ */
+export function getGitStatusTooltip(
+  code: string | undefined,
+  fileName: string,
+  renamedFrom?: string,
+  symlinkTarget?: string,
+  isRollup = false
+): string {
+  if (!code) return fileName;
+
+  // Symlink takes priority in display
+  if (symlinkTarget) {
+    return `${fileName} - Symbolic Link to ${symlinkTarget}`;
+  }
+
+  // VSCode-style folder rollup tooltip
+  if (isRollup) {
+    let statusDescription: string;
+    switch (code) {
+      case 'M': statusDescription = 'modified'; break;
+      case 'A': statusDescription = 'added'; break;
+      case 'U': statusDescription = 'untracked'; break;
+      case 'D': statusDescription = 'deleted'; break;
+      case 'R': statusDescription = 'renamed'; break;
+      case 'C': statusDescription = 'copied'; break;
+      case 'Conflict': statusDescription = 'conflicted'; break;
+      default: statusDescription = 'changed';
+    }
+    return `${fileName} - Contains ${statusDescription} items`;
+  }
+
+  let status: string;
+  switch (code) {
+    case 'M': status = 'Modified'; break;
+    case 'A': status = 'Added'; break;
+    case 'U': status = 'Untracked'; break;
+    case 'D': status = 'Deleted'; break;
+    case 'R': status = renamedFrom ? `Renamed from ${renamedFrom.split(/[/\\]/).pop()}` : 'Renamed'; break;
+    case 'C': status = 'Copied'; break;
+    case 'Conflict': status = 'Conflicted — resolve required'; break;
+    case 'Ignored': status = 'Ignored by .gitignore'; break;
+    default: status = code;
+  }
+
+  return `${fileName} - ${status}`;
 }

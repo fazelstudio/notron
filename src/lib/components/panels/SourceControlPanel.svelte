@@ -12,9 +12,9 @@
   import type { GitFileStatus } from '../../services/git';
   import { Plus, Minus, RefreshCw, Upload, Download, Loader2, FileText, ChevronDown, ChevronRight, GitBranch, MoreHorizontal, Target, Cloud, Undo2, Settings, X, Check, Copy, Folder, FolderOpen } from 'lucide-svelte';
   import Tooltip from '../common/Tooltip.svelte';
-  import { getFileIcon } from '../../utils/fileIcons';
+  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
   import { getGitStatusStyle, getExpandedFileStatusStyle } from '../../utils/gitStatusStyles';
-  import MaterialIcon from '../common/MaterialIcon.svelte';
+  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
 
   const ui = uiStore;
@@ -355,7 +355,7 @@
       const language = await invoke<string>('detect_language', { path: fullPath }).catch(() => 'plaintext');
       editorStore.setInitialContent(tabId, content);
       editorStore.setTabLoading(tabId, false);
-      editorStore.updateTab(tabId, { language });
+      editorStore.updateTab(tabId, { language, languageDetected: true });
       syncTabToPanes(tabId);
     }).catch(err => {
       console.error(err);
@@ -395,6 +395,7 @@
         originalContent: content,
         isModified: false,
         language,
+        languageDetected: true,
         isPreview: true,
         isLoading: false,
         readOnly: true,
@@ -427,6 +428,7 @@
         originalContent: content,
         isModified: false,
         language,
+        languageDetected: true,
         isPreview: true,
         isLoading: false,
         readOnly: true,
@@ -448,6 +450,7 @@
         originalContent: null,
         isModified: false,
         language: 'image-diff',
+        languageDetected: true,
         isPreview: true,
         isLoading: false,
         diffOriginalLabel: `${name} (${prevShort})`,
@@ -476,6 +479,7 @@
       originalContent: currentContent,
       isModified: false,
       language,
+      languageDetected: true,
       isPreview: true,
       isLoading: false,
       isDiff: true,
@@ -562,7 +566,7 @@
                   <FolderOpen class="w-4 h-4 mr-1.5 shrink-0 text-icon-default" />
                 {/if}
               {:else if iconTheme === 'material'}
-                <MaterialIcon name={node.name} isDir size={14} />
+                <MaterialIcon name={node.name} isDir size={14} isOpen={!collapsed.has(node.path)} />
               {/if}
               <span class="text-xs truncate flex-1">{node.name}</span>
               <span class="bg-surface-3 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-muted">{node.count}</span>

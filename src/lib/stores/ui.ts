@@ -22,6 +22,8 @@ interface UiState {
   explorerRefreshCounter: number;
   explorerCollapseCounter: number;
   isMinimapEnabled: boolean;
+  isBreadcrumbsEnabled: boolean;
+  isStickyScrollEnabled: boolean;
   recentWorkspaces: string[];
   showDotFiles: boolean;
   globalStatus: string | null;
@@ -38,6 +40,9 @@ interface UiState {
   toasts: { id: string; type: 'success' | 'alert' | 'process'; title: string; message?: string }[];
   isCloneRepositoryModalOpen: boolean;
   cloneStatus: { name: string; opId: string } | null;
+  /** SEARCH-010: recent search terms (max 20, most recent first). */
+  searchHistory: string[];
+  isStatusBarEnabled: boolean;
 }
 
 // expandedPaths lives in its own writable<Set> so toggling a folder never
@@ -65,6 +70,8 @@ function createUiStore() {
     explorerRefreshCounter: 0,
     explorerCollapseCounter: 0,
     isMinimapEnabled: typeof window !== 'undefined' ? localStorage.getItem('isMinimapEnabled') !== 'false' : true,
+    isBreadcrumbsEnabled: typeof window !== 'undefined' ? localStorage.getItem('isBreadcrumbsEnabled') !== 'false' : true,
+    isStickyScrollEnabled: typeof window !== 'undefined' ? localStorage.getItem('isStickyScrollEnabled') !== 'false' : true,
     recentWorkspaces: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('recent_workspaces') || '[]') : [],
     showDotFiles: typeof window !== 'undefined' ? localStorage.getItem('showDotFiles') === 'true' : false,
     globalStatus: null,
@@ -81,6 +88,8 @@ function createUiStore() {
     toasts: [],
     isCloneRepositoryModalOpen: false,
     cloneStatus: null,
+    searchHistory: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('search_history') || '[]') : [],
+    isStatusBarEnabled: typeof window !== 'undefined' ? localStorage.getItem('isStatusBarEnabled') !== 'false' : true,
   });
 
   let globalStatusTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -94,7 +103,7 @@ function createUiStore() {
     state.update((s) => {
       const newToasts = [...s.toasts, toast];
       if (newToasts.length > MAX_TOASTS) {
-        newToasts.shift(); // Remove the oldest toast
+        newToasts.shift();
       }
       return { ...s, toasts: newToasts };
     });
@@ -183,6 +192,9 @@ function createUiStore() {
       const savedShowDotFiles = localStorage.getItem('showDotFiles') === 'true';
       const savedActiveSidebarPanel = localStorage.getItem('activeSidebarPanel') as any || 'explorer';
       const savedMinimapEnabled = localStorage.getItem('isMinimapEnabled') !== 'false';
+      const savedBreadcrumbsEnabled = localStorage.getItem('isBreadcrumbsEnabled') !== 'false';
+      const savedStickyScrollEnabled = localStorage.getItem('isStickyScrollEnabled') !== 'false';
+      const savedStatusBarEnabled = localStorage.getItem('isStatusBarEnabled') !== 'false';
 
       update(() => ({
         explorerRoot: savedWorkspace || null,
@@ -192,6 +204,9 @@ function createUiStore() {
         showDotFiles: savedShowDotFiles,
         activeSidebarPanel: savedActiveSidebarPanel,
         isMinimapEnabled: savedMinimapEnabled,
+        isBreadcrumbsEnabled: savedBreadcrumbsEnabled,
+        isStickyScrollEnabled: savedStickyScrollEnabled,
+        isStatusBarEnabled: savedStatusBarEnabled,
       }));
     },
     toggleSidebar: () =>
@@ -256,8 +271,41 @@ function createUiStore() {
         localStorage.setItem('isMinimapEnabled', String(enabled));
         return { isMinimapEnabled: enabled };
       }),
+    toggleBreadcrumbs: () =>
+      update((s) => {
+        const newVal = !s.isBreadcrumbsEnabled;
+        localStorage.setItem('isBreadcrumbsEnabled', String(newVal));
+        return { isBreadcrumbsEnabled: newVal };
+      }),
+    setBreadcrumbsEnabled: (enabled: boolean) =>
+      update(() => {
+        localStorage.setItem('isBreadcrumbsEnabled', String(enabled));
+        return { isBreadcrumbsEnabled: enabled };
+      }),
+    toggleStickyScroll: () =>
+      update((s) => {
+        const newVal = !s.isStickyScrollEnabled;
+        localStorage.setItem('isStickyScrollEnabled', String(newVal));
+        return { isStickyScrollEnabled: newVal };
+      }),
+    setStickyScrollEnabled: (enabled: boolean) =>
+      update(() => {
+        localStorage.setItem('isStickyScrollEnabled', String(enabled));
+        return { isStickyScrollEnabled: enabled };
+      }),
 
-    // ── expandedPaths operations (Set-based) ──
+    toggleStatusBar: () =>
+      update((s) => {
+        const newVal = !s.isStatusBarEnabled;
+        localStorage.setItem('isStatusBarEnabled', String(newVal));
+        return { isStatusBarEnabled: newVal };
+      }),
+    setStatusBarEnabled: (enabled: boolean) =>
+      update(() => {
+        localStorage.setItem('isStatusBarEnabled', String(enabled));
+        return { isStatusBarEnabled: enabled };
+      }),
+
     setExpandedPaths: (paths: string[]) => {
       expandedPathsStore.set(new Set(paths));
     },
@@ -286,7 +334,6 @@ function createUiStore() {
       return val;
     },
 
-    // ── selectedPaths operations for multi-select ──
     selectedPaths: { subscribe: selectedPathsStore.subscribe },
     setSelectedPaths: (paths: string[]) => {
       selectedPathsStore.set(new Set(paths));
@@ -352,6 +399,21 @@ function createUiStore() {
         return { recentWorkspaces: newRecent };
       }),
     setPendingTrustPath: (path: string | null) => update(() => ({ pendingTrustPath: path })),
+    /** SEARCH-010: Add a search term to history (dedup, max 20). */
+    addSearchHistory: (term: string) => {
+      if (!term.trim()) return;
+      update((s) => {
+        const filtered = s.searchHistory.filter(h => h !== term);
+        const next = [term, ...filtered].slice(0, 20);
+        localStorage.setItem('search_history', JSON.stringify(next));
+        return { searchHistory: next };
+      });
+    },
+    getSearchHistorySnapshot: (): string[] => {
+      let val: string[] = [];
+      state.subscribe((s) => (val = s.searchHistory))();
+      return val;
+    },
     getSnapshot: (): UiState => {
       let val: UiState = null!;
       state.subscribe((v) => (val = v))();

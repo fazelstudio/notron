@@ -126,7 +126,6 @@ async fn load_startup_state(
                     PRAGMA temp_store = MEMORY;
                 ");
 
-                // Query UI state
                 let ui = match conn.query_row(
                     "SELECT sidebar_width, panel_height, sidebar_visible, expanded_folder_paths,
                             active_sidebar_panel, is_minimap_enabled
@@ -195,8 +194,8 @@ fn start_memory_monitor(_app: tauri::AppHandle) {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
             if let Some(process) = sys.process(pid) {
-                let usage = process.memory(); // memory in bytes
-                if usage > 500 * 1024 * 1024 { // > 500MB
+                let usage = process.memory();
+                if usage > 500 * 1024 * 1024 {
                     eprintln!("Memory usage high: {}MB", usage / 1024 / 1024);
                 } else {
                     println!("Memory usage: {}MB", usage / 1024 / 1024);
@@ -289,7 +288,6 @@ pub fn run() {
                 timers.record("critical-config");
             }
 
-            // Initialize DB with connection pool
             let pool = db::init_db(app.handle()).expect("Failed to initialize database");
             app.manage(db::DbState(pool));
             {
@@ -410,6 +408,7 @@ pub fn run() {
             // ── File Operations (batch reads) ──
             file_ops::batch_read_files,
             file_ops::get_files_metadata,
+            file_ops::get_file_encoding_info,
             // ── FS Watcher ──
             watcher_service::start_fs_watch,
             watcher_service::stop_fs_watch,

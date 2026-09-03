@@ -3,6 +3,8 @@
   import { terminalStore, type TerminalType } from '../../stores/terminal';
   import { uiStore } from '../../stores/ui';
   import { editorStore } from '../../stores/editor';
+  import { getPlatformShells } from '../../utils/platform';
+  import { SHELL_DISPLAY_NAMES } from '../../constants';
   import TerminalInstance from './TerminalInstance.svelte';
   import Tooltip from '../common/Tooltip.svelte';
   import DropdownMenu from '../common/DropdownMenu.svelte';
@@ -25,7 +27,6 @@
 
   let logsLength = $derived(outputCategory === 'Git' ? $termStore.outputLogs.length : 0);
   $effect(() => {
-    // Re-run whenever logsLength changes
     logsLength;
     if (isAtBottom && outputContainer) {
       setTimeout(() => {
@@ -63,7 +64,6 @@
   }
 
   $effect(() => {
-    // Un-maximize when switching tabs
     const currentTabId = $activeTabId;
     if (currentTabId !== prevTabId) {
       prevTabId = currentTabId;
@@ -177,18 +177,14 @@
             <div 
               class="absolute top-full right-0 mt-1 min-w-[160px] rounded-md border p-1 shadow-elevated z-[100] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary flex flex-col"
             >
-              <button 
-                class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary" 
-                onclick={() => createTerminal('powershell')}
-              >
-                <span>PowerShell</span>
-              </button>
-              <button 
-                class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary" 
-                onclick={() => createTerminal('cmd')}
-              >
-                <span>Command Prompt</span>
-              </button>
+              {#each getPlatformShells() as shellType (shellType)}
+                <button
+                  class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary"
+                  onclick={() => createTerminal(shellType)}
+                >
+                  <span>{SHELL_DISPLAY_NAMES[shellType]}</span>
+                </button>
+              {/each}
             </div>
           {/if}
         </div>
@@ -267,7 +263,7 @@
         {#if $termStore.terminals.length === 0}
           <div class="absolute inset-0 flex flex-col items-center justify-center text-muted gap-4">
             <span class="text-sm">No Active Terminals</span>
-            <button class="px-4 py-2 bg-accent text-on-accent rounded-md hover:brightness-110 transition-all text-xs" onclick={() => createTerminal('powershell')}>New Terminal</button>
+            <button class="px-4 py-2 bg-accent text-on-accent rounded-md hover:brightness-110 transition-all text-xs" onclick={() => createTerminal()}>New Terminal</button>
           </div>
         {/if}
         {#each $termStore.terminals as term (term.id)}
@@ -279,7 +275,7 @@
             class:z-10={$termStore.activeTerminalId === term.id}
             class:-z-10={$termStore.activeTerminalId !== term.id}
           >
-            <TerminalInstance tabId={term.id} type={term.type} cwd={term.cwd} initialCommand={term.initialCommand} />
+            <TerminalInstance tabId={term.id} type={term.type} cwd={term.cwd} initialCommand={term.initialCommand} env={term.env} />
           </div>
         {/each}
       </div>

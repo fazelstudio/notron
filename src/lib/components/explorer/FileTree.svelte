@@ -160,8 +160,10 @@
   import TreeNode from './TreeNode.svelte';
   import Tooltip from '../common/Tooltip.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
-  import { getFileIcon } from '../../utils/fileIcons';
-  import MaterialIcon from '../common/MaterialIcon.svelte';
+  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
+  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
+  import { gitDecorationStore } from '../../stores/gitDecoration';
+  import { getGitStatusTooltip } from '../../utils/gitStatusStyles';
 
   interface DirBatchEntry {
     path: string;
@@ -272,6 +274,23 @@
   let nodeCacheVersion = $state(0);
 
   let hoveredPath = $state('');
+
+  // Tooltip content: full path + git status (format: "path/to/file - Status")
+  // For folders: "folder - Contains modified items" (VSCode-style)
+  let hoveredTooltip = $derived.by(() => {
+    if (!hoveredPath) return '';
+    const decoration = $gitDecorationStore[hoveredPath];
+    if (decoration) {
+      return getGitStatusTooltip(
+        decoration.code,
+        hoveredPath,
+        decoration.renamed_from ?? undefined,
+        undefined,
+        decoration.is_rollup
+      );
+    }
+    return hoveredPath;
+  });
 
   function handleTreePointerMove(event: PointerEvent) {
     if (drag.active || pendingDrag) {
@@ -443,7 +462,11 @@
     $showDotFilesStore;
     const rp = $explorerRootStore;
     if (!rp) return;
-    loadRoot(rp);
+    if (rootChildren.length > 0) {
+      silentRefresh(rp);
+    } else {
+      loadRoot(rp);
+    }
   });
 
   $effect(() => {
@@ -803,7 +826,6 @@
     const hasFolder  = targets.some(p => isDir(p, flatListMap));
     const hasFile    = targets.some(p => !isDir(p, flatListMap));
     const isSingle   = count === 1;
-    const label      = isSingle ? `"${getFileName(targets[0])}"` : `${count} items`;
     const canPaste   = clipboardPaths.length > 0 && clipboardOp !== null;
 
     if (isBackground || count === 0) {
@@ -813,8 +835,15 @@
         { separator: true, label: '', action: () => {} },
         { label: 'Paste',          action: () => pasteClipboard(), disabled: !canPaste },
         { separator: true, label: '', action: () => {} },
+        { label: 'Open in Integrated Terminal', action: () => openTerminalAt(rootPath), shortcut: 'Ctrl+`' },
+        { separator: true, label: '', action: () => {} },
+        { label: 'Copy Path',          action: () => copyPathToClipboard(rootPath),          shortcut: 'Ctrl+Shift+C' },
+        { label: 'Copy Relative Path', action: () => copyRelativePathToClipboard(rootPath) },
+        { separator: true, label: '', action: () => {} },
         { label: 'Refresh',        action: () => uiStore.triggerExplorerRefresh() },
         { label: 'Reveal in File Manager', action: () => revealInFileManager(rootPath) },
+        { separator: true, label: '', action: () => {} },
+        { label: 'Remove Folder from Workspace', action: () => uiStore.setExplorerRoot(null), danger: true },
       ];
     }
 
@@ -846,7 +875,7 @@
       { separator: true, label: '', action: () => {} },
 
       { label: 'Rename',           action: () => startRename(targets[0]),  shortcut: 'F2', disabled: !isSingle },
-      { label: `Delete ${label}`,  action: () => deleteSelected(),         shortcut: 'Delete', danger: true },
+      { label: 'Delete',           action: () => deleteSelected(),         shortcut: 'Delete', danger: true },
       { separator: true, label: '', action: () => {} },
 
       { label: 'Copy Path',        action: () => copyPathToClipboard(targets[0]), disabled: !isSingle },
@@ -1097,13 +1126,20 @@
   let deleteConfirmState = $state<{ targets: string[]; isOpen: boolean; requireTyping?: string }>({
     targets: [], isOpen: false
   });
+  let deleteDontShowAgain = $state(false);
 
   async function deleteSelected() {
     if (selectedPaths.size === 0) return;
     const targets = [...selectedPaths];
 
+    if (!settingsStore.effectiveSettings.confirm_delete) {
+      executeDelete(targets);
+      return;
+    }
+
     const isAllSelected = selectedPaths.size === flatList.filter(n => !n.is_creating).length;
 
+    deleteDontShowAgain = false;
     deleteConfirmState = {
       targets,
       isOpen: true,
@@ -1112,9 +1148,17 @@
   }
 
   async function confirmDelete() {
+    if (deleteDontShowAgain) {
+      settingsStore.updateSetting('confirm_delete', false);
+    }
     const targets = deleteConfirmState.targets;
-    if (targets.length === 0) return;
     deleteConfirmState = { targets: [], isOpen: false };
+    deleteDontShowAgain = false;
+    if (targets.length === 0) return;
+    executeDelete(targets);
+  }
+
+  async function executeDelete(targets: string[]) {
 
     const prevSelected = new Set(selectedPaths);
     extraFadedPaths = new Set(targets);
@@ -1153,7 +1197,11 @@
   }
 
   function cancelDeleteConfirm() {
+    if (deleteDontShowAgain) {
+      settingsStore.updateSetting('confirm_delete', false);
+    }
     deleteConfirmState = { targets: [], isOpen: false };
+    deleteDontShowAgain = false;
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -1771,10 +1819,10 @@
   }
 
   function openTerminalAt(_path: string) {
-    const terminalStore = (window as any).__notronTerminalStore;
-    if (terminalStore) {
-      terminalStore.openTerminal(_path);
-    }
+    import('../../stores/terminal').then(({ terminalStore }) => {
+      terminalStore.newTerminal(undefined, _path);
+      terminalStore.setActivePanel('terminal');
+    });
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -1842,7 +1890,7 @@
   </div>
 
 {:else if rootChildren.length === 0}
-  <Tooltip content={hoveredPath} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
+  <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
     <div 
       class="p-4 text-xs text-muted flex-1 h-full outline-none transition-all {activePath === rootPath ? 'bg-surface-2 ring-1 ring-inset ring-focus' : ''}"
       role="presentation"
@@ -1858,7 +1906,7 @@
   </Tooltip>
 
 {:else}
-  <Tooltip content={hoveredPath} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
+  <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
     <div
       class="group/tree relative flex-1 h-full outline-none flex flex-col p-2 transition-all {activePath === rootPath ? 'bg-surface-2 ring-1 ring-inset ring-focus' : ''}"
       role="tree"
@@ -2089,6 +2137,15 @@
       {#if deleteConfirmState.requireTyping}
         <p class="text-xs text-error mb-2">Type "{deleteConfirmState.requireTyping}" to confirm:</p>
       {/if}
+      <label class="flex items-center gap-2 cursor-pointer select-none mt-3">
+        <input
+          type="checkbox"
+          checked={deleteDontShowAgain}
+          onchange={(e) => { deleteDontShowAgain = (e.target as HTMLInputElement).checked; }}
+          class="w-3.5 h-3.5 rounded border-subtle bg-surface-2 text-accent accent-accent cursor-pointer"
+        />
+        <span class="text-xs text-secondary">Don't show this again</span>
+      </label>
     </div>
     {#snippet footer()}
       <div class="flex justify-end gap-3 w-full">

@@ -19,6 +19,92 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
   // Note: @codemirror/lang-angular is intentionally not in this switch
   // because it's meant for inline Angular templates inside .ts files.
 
+  // 1. Exact filename match for dotfiles and extensionless config files.
+  //    Handles cases where Path.extension() is useless:
+  //      - ".gitignore" → ext "gitignore" (not in the extension map)
+  //      - ".env"        → ext "env" (happens to match, but also covered here for clarity)
+  const basename = filename.split(/[\\/]/).pop() || filename;
+
+  // Shared lazy loaders (avoids duplicating the same dynamic import per entry).
+  const loadProps      = async () => { const { properties } = await import('@codemirror/legacy-modes/mode/properties'); return StreamLanguage.define(properties); };
+  const loadShell      = async () => { const { shell }      = await import('@codemirror/legacy-modes/mode/shell');      return StreamLanguage.define(shell);      };
+  const loadJson       = async () => { const { json }        = await import('@codemirror/lang-json');                    return json();                             };
+  const loadDockerfile = async () => { const { dockerFile }  = await import('@codemirror/legacy-modes/mode/dockerfile'); return StreamLanguage.define(dockerFile);  };
+
+  const filenameMap: Record<string, () => Promise<Extension>> = {
+    // .env variants → properties/INI highlighter
+    '.env':                   loadProps,
+    '.env.local':             loadProps,
+    '.env.development':       loadProps,
+    '.env.development.local': loadProps,
+    '.env.test':              loadProps,
+    '.env.test.local':        loadProps,
+    '.env.production':        loadProps,
+    '.env.production.local':  loadProps,
+    '.env.staging':           loadProps,
+    '.env.example':           loadProps,
+    '.env.sample':            loadProps,
+    // git / vcs ignore files — shell highlighting handles # comments + globs
+    '.gitignore':       loadShell,
+    '.npmignore':       loadShell,
+    '.dockerignore':    loadShell,
+    '.prettierignore':  loadShell,
+    '.eslintignore':    loadShell,
+    '.stylelintignore': loadShell,
+    // git metadata
+    '.gitattributes':  loadProps,
+    '.gitmodules':     loadProps,
+    // editor / tool config
+    '.editorconfig':  loadProps,
+    '.babelrc':       loadJson,
+    '.eslintrc':      loadJson,
+    '.prettierrc':    loadJson,
+    '.stylelintrc':   loadJson,
+    // shell rc/profile
+    '.bashrc':       loadShell,
+    '.bash_profile': loadShell,
+    '.bash_aliases': loadShell,
+    '.zshrc':        loadShell,
+    '.zprofile':     loadShell,
+    '.profile':      loadShell,
+    // Dockerfile variants
+    'Dockerfile':    loadDockerfile,
+    'dockerfile':    loadDockerfile,
+    // Makefile variants (shell highlighting works well for make syntax)
+    'Makefile':    loadShell,
+    'makefile':    loadShell,
+    'GNUmakefile': loadShell,
+    // --- Lock files ---
+    // bun.lock: Bun uses a JSON-based lockfile format
+    'bun.lock':       loadJson,
+    // composer.lock: PHP Composer → JSON
+    'composer.lock':  loadJson,
+    // Cargo.lock / poetry.lock / Pipfile → TOML
+    'Cargo.lock':  async () => { const { toml } = await import('@codemirror/legacy-modes/mode/toml'); return StreamLanguage.define(toml); },
+    'poetry.lock': async () => { const { toml } = await import('@codemirror/legacy-modes/mode/toml'); return StreamLanguage.define(toml); },
+    'Pipfile':     async () => { const { toml } = await import('@codemirror/legacy-modes/mode/toml'); return StreamLanguage.define(toml); },
+    // yarn.lock / Gemfile.lock → yaml mode (closest approximation for indented key-value)
+    'yarn.lock':    async () => { const { yaml } = await import('@codemirror/lang-yaml'); return yaml(); },
+    'Gemfile.lock': async () => { const { yaml } = await import('@codemirror/lang-yaml'); return yaml(); },
+    // requirements.txt / constraints.txt → properties (pkg==ver, # comments)
+    'requirements.txt':  loadProps,
+    'constraints.txt':   loadProps,
+    // --- Ruby-based config files ---
+    // Gemfile / Vagrantfile / Brewfile → Ruby syntax
+    'Gemfile':     async () => { const { ruby } = await import('@codemirror/legacy-modes/mode/ruby'); return StreamLanguage.define(ruby); },
+    'Vagrantfile': async () => { const { ruby } = await import('@codemirror/legacy-modes/mode/ruby'); return StreamLanguage.define(ruby); },
+    'Brewfile':    async () => { const { ruby } = await import('@codemirror/legacy-modes/mode/ruby'); return StreamLanguage.define(ruby); },
+    // Rakefile → Ruby
+    'Rakefile':    async () => { const { ruby } = await import('@codemirror/legacy-modes/mode/ruby'); return StreamLanguage.define(ruby); },
+    // Jenkinsfile → Groovy
+    'Jenkinsfile': async () => { const { groovy } = await import('@codemirror/legacy-modes/mode/groovy'); return StreamLanguage.define(groovy); },
+    // Procfile → properties (KEY: command)
+    'Procfile': loadProps,
+  };
+
+  if (basename in filenameMap) return filenameMap[basename]();
+
+  // 2. Extension-based detection.
   switch (ext) {
     case 'js': case 'mjs': case 'cjs': case 'jsx': case 'ts': case 'mts': case 'cts': case 'tsx': {
       const { javascript } = await import('@codemirror/lang-javascript');
@@ -65,8 +151,51 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       return xml();
     }
     case 'md': case 'markdown': case 'mdx': {
-      const { markdown } = await import('@codemirror/lang-markdown');
-      return markdown();
+      const [{ markdown, markdownLanguage }, { LanguageDescription, LanguageSupport }] = await Promise.all([
+        import('@codemirror/lang-markdown'),
+        import('@codemirror/language'),
+      ]);
+      
+      // Instead of a hardcoded list, we dynamically load ANY language Notron supports
+      // by intercepting the tag and calling getLanguageExtension recursively!
+      const codeLanguages = (info: string) => {
+        const lang = info.trim().split(/\s+/)[0].toLowerCase();
+        if (!lang) return null;
+        
+        // Map common full language names to their primary extension so the switch 
+        // statement in getLanguageExtension can match them.
+        const aliasMap: Record<string, string> = {
+          javascript: 'js', typescript: 'ts', python: 'py', ruby: 'rb', 
+          rust: 'rs', shell: 'sh', bash: 'sh', zsh: 'sh', csharp: 'cs', 
+          fsharp: 'fs', cplusplus: 'cpp', golang: 'go', markdown: 'md', 
+          yaml: 'yml', dockerfile: 'dockerfile'
+        };
+        const searchExt = aliasMap[lang] || lang;
+
+        return LanguageDescription.of({
+          name: lang,
+          load: async () => {
+            // Recursive call to our own language detector!
+            const ext = await getLanguageExtension(`dummy.${searchExt}`);
+            
+            if (Array.isArray(ext) && ext.length === 0) {
+              throw new Error(`Language ${lang} not found`);
+            }
+            
+            // Normalize the return to LanguageSupport, as LanguageDescription requires it.
+            if (ext && (ext as any).language) {
+              return ext as any; // It's already a LanguageSupport (e.g. javascript())
+            }
+            if (ext && (ext as any).parser) {
+              return new LanguageSupport(ext as any); // It's a StreamLanguage (legacy) or LRLanguage
+            }
+            
+            throw new Error(`Cannot convert extension to LanguageSupport for ${lang}`);
+          }
+        });
+      };
+
+      return markdown({ base: markdownLanguage, codeLanguages });
     }
     case 'sql': {
       const { sql } = await import('@codemirror/lang-sql');
@@ -108,6 +237,15 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       const { lezer } = await import('@codemirror/lang-lezer');
       return lezer();
     }
+    case 'ex': case 'exs': {
+      const { elixir } = await import('codemirror-lang-elixir');
+      return elixir();
+    }
+    // .pyx = Cython — Python is the closest highlighter
+    case 'pyx': {
+      const { python } = await import('@codemirror/lang-python');
+      return python();
+    }
 
 
     case 'astro': {
@@ -131,9 +269,9 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       return patchFold(dot(), { GraphBody: foldInside }, 'dot');
     }
     case 'hbs': case 'handlebars': {
-      const handlebarsModule = await import('@xiechao/codemirror-lang-handlebars') as any;
-      const handlebars = handlebarsModule.default || handlebarsModule.handlebars;
-      return patchFold(handlebars(), { BlockStatement: foldInside }, 'handlebars');
+      const { handlebarsLanguage } = await import('@xiechao/codemirror-lang-handlebars');
+      const lang = handlebarsLanguage.configure({ props: [foldNodeProp.add({ BlockStatement: foldInside })] });
+      return new LanguageSupport(LRLanguage.define({ name: 'handlebars', parser: lang.parser }));
     }
     case 'hcl': case 'tf': case 'tfvars': {
       const { hcl } = await import('codemirror-lang-hcl');
@@ -152,9 +290,12 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       return patchFold(julia(), { Block: foldInside, ForStatement: foldInside, FunctionDefinition: foldInside, IfStatement: foldInside }, 'julia');
     }
     case 'mustache': {
-      const mustacheModule = await import('@grumptech/lezer-mustache') as any;
-      const mustache = mustacheModule.default || mustacheModule.mustache;
-      return patchFold(mustache(), { Section: foldInside }, 'mustache');
+      const { parser } = await import('@grumptech/lezer-mustache');
+      const lang = LRLanguage.define({
+        name: 'mustache',
+        parser: parser.configure({ props: [foldNodeProp.add({ Section: foldInside })] })
+      });
+      return new LanguageSupport(lang);
     }
     case 'pkl': {
       const { pkl } = await import('codemirror-lang-pkl');
@@ -179,7 +320,9 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       });
       return new LanguageSupport(LRLanguage.define({ name: 'zig', parser: patchedParser }));
     }
-    case 'glsl': case 'vert': case 'frag': case 'vs': case 'fs': {
+    // NOTE: 'fs' is intentionally removed from this case — .fs belongs to F#,
+    // not GLSL. GLSL shaders typically use .vert/.frag/.glsl/.vs only.
+    case 'glsl': case 'vert': case 'frag': case 'vs': {
       const { glsl } = await import('codemirror-lang-glsl');
       return glsl();
     }
@@ -245,9 +388,9 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       const { cmake } = await import('@codemirror/legacy-modes/mode/cmake');
       return StreamLanguage.define(cmake);
     }
-    case 'kt': case 'kts': {
-      const { kotlin } = await import('@codemirror/legacy-modes/mode/clike');
-      return StreamLanguage.define(kotlin);
+    case 'kt': case 'kts': case 'kl': {
+      const { kotlin } = await import('@fazelstudio/codemirror-lang-kotlin');
+      return kotlin();
     }
     case 'scala': case 'sc': {
       const { scala } = await import('@codemirror/legacy-modes/mode/clike');
@@ -262,12 +405,12 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       return StreamLanguage.define(dart);
     }
     case 'swift': {
-      const { swift } = await import('@codemirror/legacy-modes/mode/swift');
-      return StreamLanguage.define(swift);
+      const { swift } = await import('@fazelstudio/codemirror-lang-swift');
+      return swift();
     }
     case 'r': {
-      const { r } = await import('@codemirror/legacy-modes/mode/r');
-      return StreamLanguage.define(r);
+      const { r } = await import('codemirror-lang-r');
+      return r();
     }
     case 'pas': case 'pp': {
       const { pascal } = await import('@codemirror/legacy-modes/mode/pascal');
@@ -285,7 +428,8 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
       const { groovy } = await import('@codemirror/legacy-modes/mode/groovy');
       return StreamLanguage.define(groovy);
     }
-    case 'fsi': case 'fsx': {
+    // .fs is F# (now that GLSL no longer claims it)
+    case 'fs': case 'fsi': case 'fsx': {
       const { fSharp } = await import('@codemirror/legacy-modes/mode/mllike');
       return StreamLanguage.define(fSharp);
     }

@@ -27,6 +27,11 @@ export interface RunConfiguration {
    * the terminal Run path when there is no single program file.
    */
   command?: string;
+  /**
+   * Set on "Current File" configurations: run this exact path through the
+   * standalone run-target registry instead of a type-specific launcher.
+   */
+  currentFile?: string;
 }
 
 interface RunStoreState {

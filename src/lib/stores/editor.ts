@@ -58,6 +58,12 @@ export interface EditorTab {
   readOnly?: boolean;
   svgViewMode?: 'image' | 'code' | 'split';
   mdViewMode?: 'preview' | 'code' | 'split';
+  /** Whether language detection has completed (prevents status bar flicker). */
+  languageDetected?: boolean;
+  /** Detected character encoding (CORE-005). */
+  encoding?: string;
+  /** Detected line ending style: 'LF' or 'CRLF' (CORE-005). */
+  lineEnding?: string;
   /** When true, MD/SVG preview routing is suppressed — the editor always shows
    *  raw code. Used for SC history tabs (commit snapshots, diff views) where
    *  the goal is code review, not rendered preview. */
@@ -87,6 +93,8 @@ export type TabInput = {
   svgViewMode?: 'image' | 'code' | 'split';
   /** Suppress MD/SVG preview routing — show raw code only. */
   noPreview?: boolean;
+  /** Whether language detection has completed (prevents status bar flicker). */
+  languageDetected?: boolean;
 };
 
 // Cursor/scroll state lives in separate Maps (not in the tabs array) so the
@@ -129,6 +137,7 @@ function createEditorStore() {
         isModified: false,
         isPreview: input.isPreview ?? false,
         isUnsupported: input.isUnsupported ?? false,
+        languageDetected: input.languageDetected ?? false,
         undoHistory: input.undoHistory,
         lastAccessed: Date.now(),
         status: input.content !== null ? 'active' : 'loaded',
@@ -155,7 +164,9 @@ function createEditorStore() {
   }
 
   function closeTab(id: string) {
-    // Save to closed tab stack before closing
+    // Save to closed tab stack + remove tab + update activeTabId in ONE atomic
+    // store update so the derived `activeTab` never sees a half-updated state
+    // (tab removed but activeTabId still pointing at it).
     tabs.update((state) => {
       const tab = state.find((t) => t.id === id);
       if (tab && tab.path && !tab.path.startsWith(UNTITLED_PREFIX)) {
@@ -166,31 +177,36 @@ function createEditorStore() {
         });
         if (closedTabStack.length > MAX_CLOSED_TABS) closedTabStack.shift();
       }
-      return state;
-    });
 
-    // Cleanup cursor/scroll data
-    cursorPositions.delete(id);
-    scrollPositions.delete(id);
-
-    tabs.update((state) => {
       const newTabs = state.filter((t) => t.id !== id);
       activeTabId.update((current) => {
         if (current === id) {
-          return newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
+          if (newTabs.length === 0) return null;
+          // TAB-004: MRU heuristic — activate the most recently accessed tab
+          const mru = newTabs.reduce((best, t) =>
+            (t.lastAccessed > best.lastAccessed) ? t : best
+          );
+          return mru.id;
         }
         return current;
       });
       return newTabs;
     });
+
+    // Cleanup cursor/scroll data (after the atomic update so no effect reads stale data)
+    cursorPositions.delete(id);
+    scrollPositions.delete(id);
   }
 
   /** Close a tab from every split pane AND the editor store (single source of
-   *  truth — the pane tab bar renders from splitStore, the editor state from
-   *  editorStore, so both must be kept in sync when a tab is removed). */
+   *  truth — the pane tab bar renders from split store, the editor state from
+   *  editor store, so both must be kept in sync when a tab is removed).
+   *  Editor store is updated FIRST so the global `activeTabId` and `activeTab`
+   *  are settled before the split store triggers pane re-renders — prevents a
+   *  brief flash of stale language/Ln/Col in the status bar. */
   function closeTabEverywhere(id: string) {
-    splitStore.closeTabInAllPanes(id);
     closeTab(id);
+    splitStore.closeTabInAllPanes(id);
   }
 
   /** Close tabs for a deleted file/folder (exact match or nested under a
@@ -223,11 +239,19 @@ function createEditorStore() {
     );
   }
 
-  function setInitialContent(id: string, content: string) {
-    // Notify a live CodeMirror view BEFORE the store update so it can compare
-    // against the pre-update buffer and avoid clobbering in-flight user edits.
-    window.dispatchEvent(new CustomEvent('editor:sync-content', { detail: { tabId: id, content } }));
+  /** Update the global activeTabId without touching tab statuses.
+   *  Used by split panes to sync the global active tab when the user clicks
+   *  a tab in a different pane (without the MRU status cycling that
+   *  `setActiveTab` performs). */
+  function setActiveTabById(id: string) {
+    activeTabId.set(id);
+  }
 
+  function setInitialContent(id: string, content: string) {
+    // Update the store FIRST so that handleSyncContent (Editor.svelte)
+    // reads the correct originalContent for its baseline check.  The
+    // previous order dispatched the event before the store update, causing
+    // handleSyncContent to read stale originalContent=null and skip the sync.
     tabs.update((state) =>
       state.map((t) => {
         if (t.id === id) {
@@ -243,6 +267,10 @@ function createEditorStore() {
         return t;
       })
     );
+
+    // Notify a live CodeMirror view AFTER the store update so it can compare
+    // against the updated buffer and apply the new content.
+    window.dispatchEvent(new CustomEvent('editor:sync-content', { detail: { tabId: id, content } }));
   }
 
   function updateContent(id: string, content: string) {
@@ -462,6 +490,7 @@ function createEditorStore() {
 
   function setTabLoading(id: string, loading: boolean) {
     tabs.update((state) => state.map((t) => (t.id === id ? { ...t, isLoading: loading } : t)));
+    splitStore.updateTabInAllPanes({ id, isLoading: loading });
   }
 
   function setTabUnsupported(id: string, unsupported: boolean) {
@@ -604,6 +633,7 @@ function createEditorStore() {
       name: fileName,
       content,
       language,
+      languageDetected: true,
       isPreview: isLargeFile,
       isLargeFile,
     });
@@ -630,6 +660,7 @@ function createEditorStore() {
     closeTabEverywhere,
     closeTabsOfDeletedPath,
     setActiveTab,
+    setActiveTabById,
     setInitialContent,
     updateContent,
     updateCursor,

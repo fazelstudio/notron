@@ -146,11 +146,8 @@ pub fn scan_dir_blocking(path: &str, _show_dot_files: bool) -> Result<Vec<crate:
         
         workspace_root.map(|wr| {
             let mut builder = ignore::gitignore::GitignoreBuilder::new(&wr);
-            // Add root .gitignore
             let _ = builder.add(wr.join(".gitignore"));
-            // Add .git/info/exclude if exists
             let _ = builder.add(wr.join(".git").join("info").join("exclude"));
-            // Add any nested .gitignore along the path from root to dir
             let mut cur = dir.to_path_buf();
             while cur != wr {
                 let gi = cur.join(".gitignore");

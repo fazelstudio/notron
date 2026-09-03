@@ -22,6 +22,7 @@ import {
 } from '../services/git';
 import { GIT_LOG_LIMIT, REFRESH_REPO_DEBOUNCE_MS, GIT_STATUS_DEBOUNCE_MS } from '../constants';
 
+
 // cwd-aware Git repository store: owns the source-control panel state
 // (detection → repo state → log → operations) and reacts to the Rust
 // watcher's `git-status-refresh` event instead of polling.

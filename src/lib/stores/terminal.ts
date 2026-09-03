@@ -11,6 +11,7 @@ import {
   generateId,
 } from '../constants';
 import { settingsStore } from './settings.svelte';
+import { getPlatformShells } from '../utils/platform';
 
 export type { TerminalType };
 export { TERMINAL_TYPES };
@@ -21,6 +22,8 @@ export interface TerminalInstance {
   type: TerminalType;
   cwd: string;
   initialCommand?: string;
+  /** Extra environment variables merged over the inherited process env. */
+  env?: Record<string, string>;
 }
 
 interface TerminalState {
@@ -78,15 +81,26 @@ function createTerminalStore() {
     state.update((s) => ({ ...s, ...fn(s) }));
   }
 
+  // Live PTY handles by tab id, registered by TerminalInstance on spawn.
+  // Non-reactive by design: only used to kill processes (Stop / rerun).
+  const processKills = new Map<string, () => void>();
+
   return {
     subscribe: state.subscribe,
-    newTerminal: (type: TerminalType = settingsStore.effectiveSettings.default_shell, cwd: string = '', options?: { initialCommand?: string; name?: string }) => {
+    newTerminal: (type: TerminalType = settingsStore.effectiveSettings.default_shell, cwd: string = '', options?: { initialCommand?: string; name?: string; exactName?: boolean; env?: Record<string, string> }): string => {
+      let createdId = '';
       state.update((s) => {
-        // Guard against a stale/invalid value persisted in settings.
-        const safeType = TERMINAL_TYPES.includes(type) ? type : TERMINAL_TYPES[0];
+        // Guard against stale/invalid values: a shell saved on another OS
+        // (e.g. 'cmd' from a Windows session) falls back to this platform's.
+        const platformShells = getPlatformShells();
+        const safeType = platformShells.includes(type) ? type : platformShells[0];
         const id = generateId('term');
-        const name = options?.name || SHELL_DISPLAY_NAMES[safeType];
-        const newTerm = { id, name: `${name} ${s.terminals.length + 1}`, type: safeType, cwd, initialCommand: options?.initialCommand };
+        createdId = id;
+        const baseName = options?.name || SHELL_DISPLAY_NAMES[safeType];
+        // exactName skips the counter suffix — used by the Run feature so a
+        // configuration's terminal always carries a predictable name.
+        const name = options?.exactName ? baseName : `${baseName} ${s.terminals.length + 1}`;
+        const newTerm = { id, name, type: safeType, cwd, initialCommand: options?.initialCommand, env: options?.env };
         localStorage.setItem(VISIBLE_KEY, 'true');
         return {
           ...s,
@@ -95,6 +109,7 @@ function createTerminalStore() {
           isVisible: true,
         };
       });
+      return createdId;
     },
     closeTerminal: (id: string) => {
       state.update((s) => {
@@ -118,6 +133,20 @@ function createTerminalStore() {
         ...s,
         terminals: s.terminals.map((t) => (t.id === id ? { ...t, initialCommand: undefined } : t)),
       }));
+    },
+    registerProcess: (id: string, kill: () => void) => {
+      processKills.set(id, kill);
+    },
+    unregisterProcess: (id: string) => {
+      processKills.delete(id);
+    },
+    /** Forcefully kill the PTY behind a terminal tab. Returns true when a live process was killed. */
+    killProcess: (id: string): boolean => {
+      const kill = processKills.get(id);
+      if (!kill) return false;
+      try { kill(); } catch {}
+      processKills.delete(id);
+      return true;
     },
     setTerminals: (terminals: TerminalInstance[], activeTerminalId: string | null) => update(() => ({ terminals, activeTerminalId })),
     setActive: (id: string) => update(() => ({ activeTerminalId: id })),

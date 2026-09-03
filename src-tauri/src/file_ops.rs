@@ -197,7 +197,6 @@ pub async fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
 /// For a 100KB file, this reduces IPC payload from ~500KB to ~100KB.
 #[tauri::command]
 pub async fn read_file_text(path: String) -> Result<String, String> {
-    // Check size before reading
     let metadata = fs::metadata(&path).await.map_err(|e| e.to_string())?;
     if metadata.len() > LARGE_FILE_THRESHOLD {
         return Err("__LARGE_FILE__".to_string());
@@ -252,9 +251,7 @@ pub async fn read_directory_batch(
             Ok(Err(_e)) => {
                 // Skip failed directories silently (may have been deleted)
             }
-            Err(_e) => {
-                // Task join error — treat as failed
-            }
+            Err(_e) => {}
         }
     }
     Ok(results)
@@ -591,6 +588,71 @@ use std::sync::OnceLock;
 
 static LANGUAGE_MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
 
+// Map for exact filenames (dotfiles and config files without extensions).
+// These are matched against the bare filename (no directory part).
+static FILENAME_LANGUAGE_MAP: &[(&str, &str)] = &[
+    // .env variants → properties/INI highlighter
+    (".env", "properties"),
+    (".env.local", "properties"),
+    (".env.development", "properties"),
+    (".env.development.local", "properties"),
+    (".env.test", "properties"),
+    (".env.test.local", "properties"),
+    (".env.production", "properties"),
+    (".env.production.local", "properties"),
+    (".env.staging", "properties"),
+    (".env.example", "properties"),
+    (".env.sample", "properties"),
+    // git/vcs ignore files → shell (# comments, glob patterns)
+    (".gitignore", "shell"),
+    (".gitattributes", "properties"),
+    (".gitmodules", "properties"),
+    (".npmignore", "shell"),
+    (".dockerignore", "shell"),
+    (".prettierignore", "shell"),
+    (".eslintignore", "shell"),
+    (".stylelintignore", "shell"),
+    // editor / tool config
+    (".editorconfig", "properties"),
+    (".babelrc", "json"),
+    (".eslintrc", "json"),
+    (".prettierrc", "json"),
+    (".stylelintrc", "json"),
+    // shell rc/profile files
+    (".bashrc", "shell"),
+    (".bash_profile", "shell"),
+    (".bash_aliases", "shell"),
+    (".zshrc", "shell"),
+    (".zprofile", "shell"),
+    (".profile", "shell"),
+    // Dockerfile variants
+    ("Dockerfile", "dockerfile"),
+    ("dockerfile", "dockerfile"),
+    // Makefile variants
+    ("Makefile", "shell"),
+    ("makefile", "shell"),
+    ("GNUmakefile", "shell"),
+    // --- Lock files ---
+    ("bun.lock", "json"),
+    ("composer.lock", "json"),
+    ("Cargo.lock", "toml"),
+    ("poetry.lock", "toml"),
+    ("Pipfile", "toml"),
+    ("yarn.lock", "yaml"),
+    ("Gemfile.lock", "yaml"),
+    ("requirements.txt", "properties"),
+    ("constraints.txt", "properties"),
+    // --- Ruby-based config files ---
+    ("Gemfile", "ruby"),
+    ("Vagrantfile", "ruby"),
+    ("Brewfile", "ruby"),
+    ("Rakefile", "ruby"),
+    // --- Groovy ---
+    ("Jenkinsfile", "groovy"),
+    // --- Procfile ---
+    ("Procfile", "properties"),
+];
+
 pub fn get_language_from_ext(ext: &str) -> &'static str {
     let map = LANGUAGE_MAP.get_or_init(|| {
         let json_str = include_str!("../../src/lib/constants/languages.json");
@@ -609,7 +671,17 @@ pub fn get_language_from_ext(ext: &str) -> &'static str {
 
 #[tauri::command]
 pub async fn detect_language(path: String) -> String {
-    let ext = Path::new(&path)
+    let p = Path::new(&path);
+
+    // 1. Try exact filename match first (handles dotfiles and extensionless configs).
+    if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+        if let Some((_, lang)) = FILENAME_LANGUAGE_MAP.iter().find(|(f, _)| *f == name) {
+            return lang.to_string();
+        }
+    }
+
+    // 2. Fall back to extension-based lookup.
+    let ext = p
         .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("")
@@ -668,7 +740,6 @@ pub async fn batch_read_files(
         let p = path.clone();
         (path, tokio::spawn(async move {
             tokio::fs::read(&p).await.ok().and_then(|bytes| {
-                // Check if binary
                 if bytes.iter().take(8192).any(|&b| b == 0) {
                     return None;
                 }
@@ -710,4 +781,47 @@ pub async fn get_files_metadata(paths: Vec<String>) -> Result<Vec<FileMetadata>,
         }
     }
     Ok(results)
+}
+
+/// Detected encoding and line ending style for a file (CORE-005).
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileEncodingInfo {
+    pub encoding: String,
+    pub line_ending: String,
+}
+
+/// Detect the character encoding (BOM → chardetng fallback) and line ending
+/// style (LF vs CRLF) of a file without returning its full content.
+#[tauri::command]
+pub async fn get_file_encoding_info(path: String) -> Result<FileEncodingInfo, String> {
+    let bytes = fs::read(&path).await.map_err(|e| e.to_string())?;
+
+    // Encoding detection (same logic as open_file)
+    let encoding = if let Ok(_content) = String::from_utf8(bytes.clone()) {
+        // Valid UTF-8 — check BOM
+        if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
+            "UTF-8 BOM".to_string()
+        } else {
+            "UTF-8".to_string()
+        }
+    } else {
+        let (enc, _confidence, _) = Encoding::for_bom(&bytes)
+            .map(|(e, _)| (e, 1.0, false))
+            .unwrap_or_else(|| {
+                let mut detector = EncodingDetector::new(chardetng::Iso2022JpDetection::Allow);
+                detector.feed(&bytes, true);
+                (detector.guess(None, chardetng::Utf8Detection::Allow), 0.5, false)
+            });
+        enc.name().to_string()
+    };
+
+    // Line ending detection — check the first few KB
+    let check_len = bytes.len().min(8000);
+    let has_crlf = bytes[..check_len].windows(2).any(|w| w == b"\r\n");
+    let line_ending = if has_crlf { "CRLF".to_string() } else { "LF".to_string() };
+
+    Ok(FileEncodingInfo {
+        encoding,
+        line_ending,
+    })
 }

@@ -6,10 +6,11 @@
   import { settingsStore } from '../../stores/settings.svelte';
   import { getGitFileContent } from '../../services/git';
   import { dirname } from '../../utils/path';
-  import { getFileIcon } from '../../utils/fileIcons';
-  import MaterialIcon from '../common/MaterialIcon.svelte';
+  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
+  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
   import SvgViewToggle from '../common/SvgViewToggle.svelte';
   import MarkdownViewToggle from '../common/MarkdownViewToggle.svelte';
+  import { createCancelableLoader } from '../../utils/cancelableLoader';
   import type { EditorPane } from '../../stores/split';
 
   interface Props {
@@ -49,8 +50,9 @@
   let isActive = $derived($splitState.activePaneId === paneId);
   let totalPanes = $derived(Object.keys($splitState.panes).length);
 
-  // Loading tab IDs guard
+  // Loading tab IDs guard + cancelable loader (ASYNC-003) to discard stale results
   const loadingTabIds = new Set<string>();
+  const lazyLoadLoader = createCancelableLoader<any>();
 
   // Lazy-load content when activeTab changes and content is null
   $effect(() => {
@@ -106,33 +108,50 @@
       } else if (activeTab.isLargeFile) {
         // Large files: restore only the preview chunk instead of the full
         // document, so a session-restored large tab rehydrates cheaply.
-        invoke<any>('read_file_chunked', { path }).then(chunked => {
+        lazyLoadLoader.load(async () => {
+          try {
+            return await invoke<any>('read_file_chunked', { path });
+          } catch (err) {
+            console.error('Failed to lazy load large tab:', err);
+            return null;
+          }
+        }).then(chunked => {
+          if (chunked === undefined) return; // superseded
+          if (chunked === null) return;
           editorStore.setInitialContent(tabId, chunked.content);
           editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
           syncToSplit();
-        }).catch(err => {
-          console.error('Failed to lazy load large tab:', err);
         }).finally(() => {
           editorStore.setTabLoading(tabId, false);
           loadingTabIds.delete(tabId);
         });
       } else {
-        invoke<string>('read_file_text', { path }).then(content => {
-          editorStore.setInitialContent(tabId, content);
-          syncToSplit();
-        }).catch(async err => {
-          if (String(err) === '__BINARY__') {
-            editorStore.setTabUnsupported(tabId, true);
-            editorStore.setInitialContent(tabId, '');
-          } else if (String(err) === '__LARGE_FILE__') {
-            try {
+        lazyLoadLoader.load(async () => {
+          try {
+            return await invoke<string>('read_file_text', { path });
+          } catch (err) {
+            if (String(err) === '__BINARY__') return { __error: 'binary' as const };
+            if (String(err) === '__LARGE_FILE__') {
               const chunked = await invoke<any>('read_file_chunked', { path });
-              editorStore.setInitialContent(tabId, chunked.content);
+              return { __error: 'large' as const, content: chunked.content };
+            }
+            throw err;
+          }
+        }).then(result => {
+          if (result === undefined) return; // superseded
+          if (result && typeof result === 'object' && '__error' in result) {
+            if (result.__error === 'binary') {
+              editorStore.setTabUnsupported(tabId, true);
+              editorStore.setInitialContent(tabId, '');
+            } else if (result.__error === 'large') {
+              editorStore.setInitialContent(tabId, result.content);
               editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
-              syncToSplit();
-            } catch (e) { console.error(e); }
-          } else {
-            console.error('Failed to lazy load tab:', err);
+            }
+            // Sync even for binary/large paths so split pane reflects final state
+            syncToSplit();
+          } else if (typeof result === 'string') {
+            editorStore.setInitialContent(tabId, result);
+            syncToSplit();
           }
         }).finally(() => {
           editorStore.setTabLoading(tabId, false);
@@ -142,7 +161,7 @@
     }
   });
 
-  // Context menu state
+
   let ctxMenu = $state({
     isOpen: false,
     x: 0,
@@ -263,7 +282,6 @@
     const tab = tabs.find(t => t.id === tabId);
     if (!tab) return;
     if (tab.isModified || (tab.path.startsWith('Untitled') && tab.content && tab.content.trim() !== '')) {
-      // Delegate to App via a custom event
       window.dispatchEvent(new CustomEvent('split:request-close-tab', { detail: { tabId, paneId } }));
     } else {
       splitStore.closeTabInPane(paneId, tabId);
@@ -273,14 +291,16 @@
 
   function handlePaneActivate() {
     if (!isActive) splitStore.setActivePane(paneId);
+    const pane = splitStore.getSnapshot().panes[paneId];
+    if (pane?.activeTabId) {
+      editorStore.setActiveTabById(pane.activeTabId);
+    }
   }
 
   function handleClosePane() {
-    // Close pane (must have at least one remaining)
     splitStore.closePane(paneId);
   }
 
-  // Keyboard: Ctrl+W closes tab or pane
   function handleKeydown(e: KeyboardEvent) {
     const isMac = navigator.userAgent.toLowerCase().includes('mac');
     const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
@@ -300,7 +320,6 @@
           }
         }
       } else {
-        // No tabs — close pane
         const allPaneIds = splitStore.collectPaneIds();
         if (allPaneIds.length > 1) {
           splitStore.closePane(paneId);
@@ -309,7 +328,6 @@
     }
   }
 
-  // Precomputed name→count map
   const tabNameCounts = $derived(
     tabs.reduce((m, t: any) => {
       if (t.path?.startsWith('Untitled')) return m;
@@ -318,7 +336,6 @@
     }, new Map<string, number>())
   );
 
-  // Close context menus on global events
   $effect(() => {
     const handler = () => closeCtxMenu();
     window.addEventListener('close-context-menus', handler);
@@ -489,7 +506,7 @@
               {/snippet}
 
               {#if viewMode === 'image' || viewMode === 'preview'}
-                <div class="absolute inset-0 bg-canvas">
+                <div class="absolute inset-0 bg-canvas" oncontextmenu={(e) => e.stopPropagation()}>
                   {#if isMd && MarkdownPreviewComponent}
                     <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
                   {:else if !isMd && ImageViewerComponent}
@@ -508,13 +525,17 @@
                     </div>
                     <div class="flex-1 flex overflow-hidden relative">
                       {#if MarkdownPreviewComponent}
-                        <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
+                        <div class="w-full h-full" oncontextmenu={(e) => e.stopPropagation()}>
+                          <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
+                        </div>
                       {/if}
                     </div>
                   {:else}
                     <div class="flex-1 flex overflow-hidden relative border-r border-border">
                       {#if ImageViewerComponent}
-                        <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
+                        <div class="w-full h-full" oncontextmenu={(e) => e.stopPropagation()}>
+                          <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
+                        </div>
                       {/if}
                     </div>
                     <div class="flex-1 flex overflow-hidden relative [&_.cm-panels-top]:!hidden">
@@ -526,7 +547,15 @@
             </EditorComponent>
           {/key}
         {:else}
-          <div class="absolute inset-0 bg-canvas"></div>
+          <div class="absolute inset-0 bg-canvas flex flex-col">
+            <div class="flex items-center justify-end px-2 h-8 shrink-0">
+              {#if isMd}
+                <MarkdownViewToggle {activeTab} />
+              {:else}
+                <SvgViewToggle {activeTab} />
+              {/if}
+            </div>
+          </div>
         {/if}
       {:else if activeTab.language === 'image-diff' && ImageDiffComponent}
         <ImageDiffComponent 

@@ -44,6 +44,7 @@
         "@fazelstudio/codemirror-lang-astro": "^0.2.0",
         "@fazelstudio/codemirror-lang-kotlin": "^0.3.0",
         "@fazelstudio/codemirror-lang-prisma": "^0.2.0",
+        "@fazelstudio/codemirror-lang-scala": "^0.1.4",
         "@fazelstudio/codemirror-lang-solidity": "^0.2.0",
         "@fazelstudio/codemirror-lang-swift": "^0.2.1",
         "@fazelstudio/codemirror-stickyscroll": "^0.1.0",
@@ -233,6 +234,8 @@
     "@fazelstudio/codemirror-lang-kotlin": ["@fazelstudio/codemirror-lang-kotlin@0.3.0", "", { "peerDependencies": { "@codemirror/autocomplete": "^6.0.0", "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.0.0", "@lezer/common": "^1.2.0", "@lezer/highlight": "^1.2.0", "@lezer/lr": "^1.4.0" } }, "sha512-mzFidQuqG/zs859HjLNCJPho6LAS6EL4fgi6tawtv5aAqh+Qc3389gGn3iu0rqwHZogffO/oXsaEsqn0WSs4bw=="],
 
     "@fazelstudio/codemirror-lang-prisma": ["@fazelstudio/codemirror-lang-prisma@0.2.0", "", { "dependencies": { "@codemirror/autocomplete": "^6.0.0", "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.0.0", "@lezer/common": "^1.2.0", "@lezer/highlight": "^1.2.0", "@lezer/lr": "^1.4.0" } }, "sha512-f3RW/9vEocfwkFLUgYhG+nrQSA6ycANOTWi2bbYWZcnnP8q2kq33UMY9fKYbnL4A7o77c8VxArY/OLy34zg3cA=="],
+
+    "@fazelstudio/codemirror-lang-scala": ["@fazelstudio/codemirror-lang-scala@0.1.4", "", { "dependencies": { "@codemirror/autocomplete": "^6.0.0", "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.0.0", "@lezer/common": "^1.2.0", "@lezer/highlight": "^1.2.0", "@lezer/lr": "^1.4.0" } }, "sha512-BVgkZN9SEwt8Cash4ffMdpz3QhkF64614ndNcLPRxSwCDIdfRZT6OWAZpl1JcihMwWdwu4TqxenXGNv98bFpgg=="],
 
     "@fazelstudio/codemirror-lang-solidity": ["@fazelstudio/codemirror-lang-solidity@0.2.0", "", { "peerDependencies": { "@codemirror/autocomplete": "^6.0.0", "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.0.0", "@lezer/common": "^1.2.0", "@lezer/highlight": "^1.2.0", "@lezer/lr": "^1.4.0" }, "optionalPeers": ["@codemirror/autocomplete", "@codemirror/state", "@codemirror/view"] }, "sha512-KKeXlLORW8zeMn11q60cSHCinAT+SpFpJmOqdRZhZaGhsgm8azAw32aZhej9weNjXz6R2J5xzpO5DSrfE+tbzQ=="],
 

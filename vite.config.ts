@@ -99,6 +99,10 @@ export default defineConfig(async () => ({
       '@fazelstudio/codemirror-lang-prisma',
       '@fazelstudio/codemirror-lang-kotlin',
       '@fazelstudio/codemirror-lang-swift',
+      '@fazelstudio/codemirror-lang-c',
+      '@fazelstudio/codemirror-lang-lua',
+      '@fazelstudio/codemirror-lang-luau',
+      '@fazelstudio/codemirror-lang-scala',
       '@nextjournal/lang-clojure',
       
       // Community Pure Lezer langs
@@ -117,31 +121,7 @@ export default defineConfig(async () => ({
       '@iizukak/codemirror-lang-wgsl',
       'cm6-graphql',
       '@ndim/lezer-zig',
-      'codemirror-lang-glsl',
-
-      // CodeMirror legacy modes
-      '@codemirror/legacy-modes/mode/shell',
-      '@codemirror/legacy-modes/mode/ruby',
-      '@codemirror/legacy-modes/mode/lua',
-      '@codemirror/legacy-modes/mode/perl',
-      '@codemirror/legacy-modes/mode/powershell',
-      '@codemirror/legacy-modes/mode/dockerfile',
-      '@codemirror/legacy-modes/mode/toml',
-      '@codemirror/legacy-modes/mode/properties',
-      '@codemirror/legacy-modes/mode/diff',
-      '@codemirror/legacy-modes/mode/cmake',
-      '@codemirror/legacy-modes/mode/clike',
-      '@codemirror/legacy-modes/mode/r',
-      '@codemirror/legacy-modes/mode/pascal',
-      '@codemirror/legacy-modes/mode/haskell',
-      '@codemirror/legacy-modes/mode/erlang',
-      '@codemirror/legacy-modes/mode/groovy',
-      '@codemirror/legacy-modes/mode/mllike',
-      '@codemirror/legacy-modes/mode/nginx',
-      '@codemirror/legacy-modes/mode/protobuf',
-      '@codemirror/legacy-modes/mode/pug',
-      '@codemirror/legacy-modes/mode/stylus',
-      '@codemirror/legacy-modes/mode/stex'
+      'codemirror-lang-glsl'
     ],
     // Exclude mermaid from the pre-bundle because it is lazy-loaded.
     exclude: ['mermaid'],

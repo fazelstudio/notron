@@ -20,9 +20,11 @@
   "rust": [
     "rs"
   ],
-  "cpp": [
+  "c": [
     "c",
-    "h",
+    "h"
+  ],
+  "cpp": [
     "cpp",
     "cc",
     "cxx",
@@ -128,6 +130,9 @@
   ],
   "lua": [
     "lua"
+  ],
+  "luau": [
+    "luau"
   ],
   "perl": [
     "pl",
@@ -291,8 +296,221 @@
   "solidity": [
     "sol"
   ],
-  "elixir": [
-    "ex",
-    "exs"
+  "apl": [
+    "apl"
+  ],
+  "asciiarmor": [
+    "asc",
+    "gpg"
+  ],
+  "asn1": [
+    "asn",
+    "asn1"
+  ],
+  "brainfuck": [
+    "bf",
+    "b"
+  ],
+  "cobol": [
+    "cob",
+    "cbl",
+    "cpy"
+  ],
+  "coffeescript": [
+    "coffee"
+  ],
+  "commonlisp": [
+    "lisp",
+    "lsp",
+    "cl"
+  ],
+  "crystal": [
+    "cr"
+  ],
+  "cypher": [
+    "cypher",
+    "cql"
+  ],
+  "d": [
+    "d"
+  ],
+  "dtd": [
+    "dtd"
+  ],
+  "dylan": [
+    "dylan",
+    "dyl"
+  ],
+  "ebnf": [
+    "ebnf"
+  ],
+  "ecl": [
+    "ecl"
+  ],
+  "eiffel": [
+    "e"
+  ],
+  "elm": [
+    "elm"
+  ],
+  "factor": [
+    "factor"
+  ],
+  "fcl": [
+    "fcl"
+  ],
+  "forth": [
+    "fth",
+    "4th"
+  ],
+  "fortran": [
+    "f",
+    "f77",
+    "f90",
+    "f95",
+    "f03",
+    "f08",
+    "for"
+  ],
+  "gas": [
+    "s",
+    "asm"
+  ],
+  "gherkin": [
+    "feature"
+  ],
+  "haxe": [
+    "hx",
+    "hxml"
+  ],
+  "http": [
+    "http",
+    "rest"
+  ],
+  "idl": [
+    "idl",
+    "pro"
+  ],
+  "livescript": [
+    "ls"
+  ],
+  "mathematica": [
+    "nb",
+    "wl",
+    "wls"
+  ],
+  "mbox": [
+    "mbox"
+  ],
+  "mirc": [
+    "mrc"
+  ],
+  "modelica": [
+    "mo"
+  ],
+  "mscgen": [
+    "msc"
+  ],
+  "nsis": [
+    "nsi",
+    "nsh"
+  ],
+  "ntriples": [
+    "nt"
+  ],
+  "oz": [
+    "oz"
+  ],
+  "pegjs": [
+    "pegjs",
+    "peg"
+  ],
+  "pig": [
+    "pig"
+  ],
+  "puppet": [
+    "puppet"
+  ],
+  "q": [
+    "q",
+    "k"
+  ],
+  "rpm": [
+    "spec"
+  ],
+  "sas": [
+    "sas"
+  ],
+  "scheme": [
+    "scm",
+    "ss",
+    "sls",
+    "sld"
+  ],
+  "sieve": [
+    "sieve",
+    "siv"
+  ],
+  "smalltalk": [
+    "st"
+  ],
+  "tcl": [
+    "tcl",
+    "tk"
+  ],
+  "textile": [
+    "textile"
+  ],
+  "tiddlywiki": [
+    "tid"
+  ],
+  "troff": [
+    "man",
+    "roff"
+  ],
+  "ttcn": [
+    "ttcn",
+    "ttcn3"
+  ],
+  "ttcn-cfg": [
+    "ttcncfg"
+  ],
+  "turtle": [
+    "ttl"
+  ],
+  "vb": [
+    "vb"
+  ],
+  "vbscript": [
+    "vbs"
+  ],
+  "velocity": [
+    "vm",
+    "vtl"
+  ],
+  "verilog": [
+    "v",
+    "sv",
+    "svh",
+    "tlv"
+  ],
+  "vhdl": [
+    "vhd",
+    "vhdl"
+  ],
+  "webidl": [
+    "webidl"
+  ],
+  "xquery": [
+    "xq",
+    "xql",
+    "xqy",
+    "xquery"
+  ],
+  "yacas": [
+    "ys"
+  ],
+  "z80": [
+    "z80"
   ]
 }

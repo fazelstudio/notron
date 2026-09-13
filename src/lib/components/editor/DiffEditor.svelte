@@ -5,7 +5,8 @@
   import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
   import { MergeView } from '@codemirror/merge';
   import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
-  import { getThemeExtension } from '../../themes';
+  import { getThemeExtension } from '../../theme/registry';
+  import { ntEditorOverride } from '../../theme/cm6-theme';
   import { closeBrackets } from '@codemirror/autocomplete';
 
   const basicExtensions = [
@@ -21,12 +22,11 @@
     ])
   ];
 
-  // Base layout theme — stable across re-renders.
   const baseTheme = EditorView.theme({
     "&": { backgroundColor: "transparent !important", height: "100%" },
     ".cm-gutters": {
-      backgroundColor: "var(--bg-canvas) !important",
-      borderRight: "1px solid var(--border-subtle) !important",
+      backgroundColor: "var(--nt-editor-bg) !important",
+      borderRight: "1px solid var(--nt-editor-border) !important",
       paddingLeft: "4px !important",
       paddingRight: "0px !important",
     },
@@ -39,25 +39,31 @@
   });
 
   /**
-   * Build a diff-coloring theme matching VSCode's diff editor style.
-   *  Left side  (cm-merge-a) = removed  → red   background + gutter tint
-   *  Right side (cm-merge-b) = added    → green background + gutter tint
-   *  Inline character diff uses a deeper tint of the same hue.
-   *  Colors are dark/light adaptive.
+   * Build a diff-coloring theme that derives from global CSS variables so
+   * the diff palette follows any active theme (light/dark, hc, nord, etc.)
+   * instead of hard hex literals. Removed → error/red, Added → success/green,
+   * both via color-mix with the canvas/bg. Gutter text uses --text-on-error
+   * / --text-on-success for contrast in both modes.
    */
-  function buildDiffTheme(dark: boolean): ReturnType<typeof EditorView.theme> {
-    const del = dark
-      ? { lineBg: '#3f1818', textBg: '#6b2020', gutterBg: '#c74040', border: '#c74040' }
-      : { lineBg: '#ffd7d5', textBg: '#f5b8b5', gutterBg: '#c43030', border: '#c43030' };
-    const ins = dark
-      ? { lineBg: '#1a3a1a', textBg: '#2a5c2a', gutterBg: '#38a838', border: '#38a838' }
-      : { lineBg: '#d0f0d0', textBg: '#a6e0a6', gutterBg: '#2a8c2a', border: '#2a8c2a' };
-    const ghostBg = dark ? 'rgba(200,60,60,0.10)' : 'rgba(180,40,40,0.07)';
-    const spacerBg = dark ? 'rgba(80,80,80,0.22)' : 'rgba(160,160,160,0.14)';
-    const spacerBdr = dark ? 'rgba(120,120,120,0.35)' : 'rgba(100,100,100,0.28)';
+  function buildDiffTheme(): ReturnType<typeof EditorView.theme> {
+    const del = {
+      lineBg: 'color-mix(in srgb, var(--nt-status-error) 12%, var(--nt-editor-bg))',
+      textBg: 'color-mix(in srgb, var(--nt-status-error) 22%, transparent)',
+      gutterBg: 'var(--nt-status-error)',
+      border: 'var(--nt-status-error)',
+    };
+    const ins = {
+      lineBg: 'color-mix(in srgb, var(--nt-status-success) 12%, var(--nt-editor-bg))',
+      textBg: 'color-mix(in srgb, var(--nt-status-success) 22%, transparent)',
+      gutterBg: 'var(--nt-status-success)',
+      border: 'var(--nt-status-success)',
+    };
+    const ghostBg = 'color-mix(in srgb, var(--nt-status-error) 10%, transparent)';
+    const spacerBg = 'color-mix(in srgb, var(--nt-editor-border) 35%, transparent)';
+    const spacerBdr = 'var(--nt-editor-border)';
 
     return EditorView.theme({
-      // ── Left editor: removed lines ──────────────────────────────────────────
+ // Left editor: removed lines
       '&.cm-merge-a .cm-changedLine': {
         backgroundColor: `${del.lineBg} !important`,
         borderLeft: `3px solid ${del.border} !important`,
@@ -68,7 +74,7 @@
       },
       '&.cm-merge-a .cm-changedLineGutter': {
         background: `${del.gutterBg} !important`,
-        color: '#fff !important',
+        color: 'var(--text-on-error) !important',
       },
       '.cm-deletedChunk': {
         background: `${del.lineBg} !important`,
@@ -76,14 +82,14 @@
       },
       '.cm-deletedLineGutter': {
         background: `${del.gutterBg} !important`,
-        color: '#fff !important',
+        color: 'var(--text-on-error) !important',
       },
       '&.cm-merge-a .cm-deletedText, .cm-deletedChunk .cm-deletedText': {
         backgroundColor: `${del.textBg} !important`,
         borderRadius: '2px',
       },
 
-      // ── Right editor: added lines ───────────────────────────────────────────
+ // Right editor: added lines
       '&.cm-merge-b .cm-changedLine': {
         backgroundColor: `${ins.lineBg} !important`,
         borderLeft: `3px solid ${ins.border} !important`,
@@ -94,29 +100,37 @@
       },
       '&.cm-merge-b .cm-changedLineGutter': {
         background: `${ins.gutterBg} !important`,
-        color: '#fff !important',
+        color: 'var(--text-on-success) !important',
       },
       '&.cm-merge-b .cm-deletedText': {
         background: `${ghostBg} !important`,
         borderRadius: '2px',
       },
 
-      // ── Spacer / filler (collapsed unchanged context rows) ──────────────────
+ // Spacer / filler (collapsed unchanged context rows)
       '.cm-mergeSpacer': {
         background: spacerBg,
         borderTop: `1px dashed ${spacerBdr}`,
         borderBottom: `1px dashed ${spacerBdr}`,
       },
 
-      // ── Revert button (← arrow between the two panes) ──────────────────────
       '.cm-merge-revert button': {
-        background: dark ? '#2a4a6a' : '#cce4f7',
-        border: `1px solid ${dark ? '#4a7aa8' : '#7ab3d8'}`,
-        color: dark ? '#9ac8f0' : '#1a5a8a',
+        background: 'var(--nt-overlay-bg)',
+        border: '1px solid var(--nt-overlay-border)',
+        color: 'var(--nt-prim-accent)',
         borderRadius: '3px',
         fontSize: '10px',
         padding: '1px 5px',
         cursor: 'pointer',
+      '.cm-merge-revert button:hover': {
+        background: 'var(--nt-hover-bg)',
+        borderColor: 'var(--nt-prim-accent)',
+        color: 'var(--nt-prim-accent)',
+      },
+      '.cm-merge-revert button:focus-visible': {
+        outline: '1px solid var(--nt-focus-border)',
+        outlineOffset: '1px',
+      },
       },
     });
   }
@@ -159,12 +173,13 @@
   onMount(async () => {
     const langExt = await loadLanguage();
     const themeExt = getThemeExtension($themeStore.theme, isDark);
-    const diffTheme = buildDiffTheme(isDark);
+    const diffTheme = buildDiffTheme();
 
     const baseExtensions = [
       ...basicExtensions,
       baseTheme,
       themeExt,
+      ntEditorOverride,
       langExt,
       diffTheme,
     ];
@@ -208,8 +223,8 @@
   });
 </script>
 
-<div class="h-full w-full flex flex-col bg-canvas text-primary relative" bind:this={diffContainer} style="height: 100%;">
-  <div class="h-8 shrink-0 flex items-center border-b border-subtle px-4 bg-surface-2 text-xs text-muted justify-between">
+<div class="h-full w-full flex flex-col bg-[var(--nt-editor-bg)] text-primary relative" bind:this={diffContainer} style="height: 100%;">
+  <div class="h-8 shrink-0 flex items-center border-b border-subtle px-4 bg-[var(--nt-overlay-bg)] text-xs text-muted justify-between">
     <div class="flex-1 text-center font-mono truncate">{originalLabel}</div>
     <div class="flex-1 text-center font-mono border-l border-subtle truncate">{currentLabel}</div>
   </div>

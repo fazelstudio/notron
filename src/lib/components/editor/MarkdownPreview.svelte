@@ -119,7 +119,7 @@
     return () => el.removeEventListener('scroll', handler);
   });
 
-  // Lazy load mermaid only when content contains mermaid code blocks (Bagian 17.1)
+  // Lazy load mermaid only when needed.
   $effect(() => {
     if (!html || !content.includes('```mermaid')) return;
     import('mermaid').then(({ default: mermaid }) => {

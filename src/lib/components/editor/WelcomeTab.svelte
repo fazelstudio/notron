@@ -1,49 +1,43 @@
 <script lang="ts">
   import { uiStore } from '../../stores/ui';
-  import { open } from '@tauri-apps/plugin-dialog';
+  import { eventBus } from '../../utils/eventBus';
+  import { walkthroughRegistry, type WalkthroughStep } from '../../workbench/walkthroughRegistry';
+  import { commandRegistry } from '../../commands/registry';
   import { exists } from '@tauri-apps/plugin-fs';
 
   const ui = uiStore;
+  // Onboarding content is data — the registry decides which steps exist.
+  let registryVersion = $state(0);
+  $effect(() => {
+    const d = walkthroughRegistry.onDidChange(() => registryVersion++);
+    return () => d.dispose();
+  });
+  let walkthroughSections = $derived.by(() => {
+    void registryVersion;
+    return walkthroughRegistry.getVisible();
+  });
+
+  function runStep(step: WalkthroughStep) {
+    if (step.command && commandRegistry.has(step.command)) {
+      void commandRegistry.execute(step.command);
+      return;
+    }
+    step.action?.();
+  }
+
 
   async function handleOpenRecent(path: string) {
     if (path === uiStore.getSnapshot().explorerRoot) return;
     try {
       const doesExist = await exists(path);
       if (!doesExist) { alert(`Path not found: ${path}`); return; }
-      window.dispatchEvent(new CustomEvent('request-workspace-switch', { detail: { path } }));
+      eventBus.emit('request-workspace-switch', { path });
     } catch (err) { alert(`Failed to load folder: ${err}`); }
   }
-
-  function handleNewFile() { uiStore.openNewFileDialog('welcome'); }
 
   function handleRemoveRecent(e: MouseEvent, path: string) {
     e.stopPropagation();
     uiStore.removeRecentWorkspace(path);
-  }
-
-  async function handleOpenFile() {
-    try {
-      const selected = await open({ multiple: false });
-      if (selected && typeof selected === 'string') {
-        // Route through the central open handler: the tab opens immediately
-        // and the content streams in from the background.
-        window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: selected } }));
-      }
-    } catch (err) { console.error(err); }
-  }
-
-  async function handleOpenFolder() {
-    try {
-      const selected = await open({ directory: true, multiple: false });
-      if (selected && typeof selected === 'string') {
-        if (selected === uiStore.getSnapshot().explorerRoot) return;
-        if (!$ui.recentWorkspaces.includes(selected)) {
-          uiStore.setPendingTrustPath(selected);
-        } else {
-          window.dispatchEvent(new CustomEvent('request-workspace-switch', { detail: { path: selected } }));
-        }
-      }
-    } catch (err) { console.error(err); }
   }
 
   let displayedRecent = $derived($ui.recentWorkspaces.slice(0, 5));
@@ -57,20 +51,18 @@
       <h1 class="text-4xl font-semibold opacity-90">Notron</h1>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+      <div class="space-y-8">
+        {#each walkthroughSections as section (section.id)}
       <div class="space-y-6">
-        <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-4">Start</h2>
-        <button onclick={handleNewFile} class="flex items-center gap-3 w-full text-left opacity-80 hover:opacity-100 transition-opacity p-2 rounded hover:bg-hover">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-accent"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>New File</span>
+            <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-4">{section.title}</h2>
+            {#each section.steps as step (step.id)}
+              <button onclick={() => runStep(step)} class="flex items-center gap-3 w-full text-left opacity-80 hover:opacity-100 transition-opacity p-2 rounded hover:bg-hover">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-accent"><path d={step.iconPath} /></svg>
+                <span>{step.label}</span>
         </button>
-        <button onclick={handleOpenFile} class="flex items-center gap-3 w-full text-left opacity-80 hover:opacity-100 transition-opacity p-2 rounded hover:bg-hover">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-accent"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <span>Open File...</span>
-        </button>
-        <button onclick={handleOpenFolder} class="flex items-center gap-3 w-full text-left opacity-80 hover:opacity-100 transition-opacity p-2 rounded hover:bg-hover">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-accent"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
-          <span>Open Folder...</span>
-        </button>
+            {/each}
+          </div>
+        {/each}
       </div>
       <div class="space-y-6">
         <h2 class="text-sm font-semibold opacity-60 uppercase tracking-wider mb-4">Recent</h2>

@@ -1,18 +1,4 @@
 <script lang="ts">
-  /**
-   * VirtualList.svelte — UI virtualization (virtual list engine)
-   *
-   * Renders only the visible slice of a flat array with an overscan buffer.
-   * Item height MUST be constant (ITEM_HEIGHT) for accurate position calculation.
-   *
-   * How it works:
-   *  - Fixed item height (22px default) gives O(1) position calculation without DOM measurement
-   *  - startIndex / endIndex are derived from scrollTop and container height
-   *  - Only slice flatList[startIndex..endIndex] + OVERSCAN buffer is rendered
-   *  - A single spacer div of totalItems * ITEM_HEIGHT provides an accurate scrollbar
-   *  - Items are positioned with translateY(startIndex * ITEM_HEIGHT)
-   *  - NEVER render all nodes, even for only 200 items
-   */
 
   import type { Snippet } from 'svelte';
 

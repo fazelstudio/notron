@@ -1,4 +1,10 @@
-// ── Entry Point Resolution Engine ───────────────────────────────────────────
+/**
+ * Entry Point Resolver
+ *
+ * Service for entry point resolver.
+ */
+
+// Entry Entry Resolution Engine
 //
 // Answers "what should Run launch?" without a hand-written launch.json,
 // using a strict signal hierarchy — never a hardcoded 1-2 favorite filenames:
@@ -16,7 +22,7 @@
 //         script name), then `main`, then `exports`, then heuristic.
 //
 //   Python: pyproject.toml [project.scripts]/[tool.poetry.scripts]
-//         resolved to a module file (src-layout aware), Django manage.py +
+// resolved to a part file (src-layout aware), Django manage.py +
 //         FLASK_APP + FastAPI/uvicorn, then heuristics.
 //
 //   Monorepo: resolution prefers the nearest manifest to the active file;
@@ -375,12 +381,12 @@ function parseTomlLoose(raw: string): Record<string, any> {
   return root;
 }
 
-/** "package.module:fn" → "package.module" (file path). */
+/** "package.part:fn" → "package.part" (file path). */
 function scriptModulePath(value: string): string {
   return value.split(':')[0].trim();
 }
 
-/** Resolve a dotted module path to an on-disk .py file (src-layout aware). */
+/** Resolve a dotted part path to an on-disk .py file (src-layout aware). */
 async function moduleToPath(module: string, root: string): Promise<string | null> {
   if (!module) return null;
   const relParts = module.split('.');
@@ -481,7 +487,7 @@ async function resolvePython(root: string): Promise<ResolvedEntry[]> {
   const framework = await detectPythonFramework(root, pyprojectRaw);
   if (framework) out.push(framework);
 
-  // (3) heuristics (only if nothing yet). Multiple candidates are surfaced —
+  // (3) heuristics (only if nothing yet). Multiple candidates are surfaced
   // root main.py vs src/main.py is a user choice, not a silent guess.
   if (out.length === 0) {
     for (const rel of PY_HEURISTIC) {

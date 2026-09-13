@@ -1,0 +1,11 @@
+import { abcdef, defaultSettingsAbcdef } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "abcdef";
+export const label = "Abcdef";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = abcdef;
+export const settings = defaultSettingsAbcdef;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/abcdef.ts" });

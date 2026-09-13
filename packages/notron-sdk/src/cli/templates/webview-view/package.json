@@ -1,0 +1,9 @@
+{
+  "name": "webview-view",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "scripts": { "build": "notron-sdk build", "package": "notron-sdk package" },
+  "dependencies": { "notron-sdk": "^0.1.0" },
+  "devDependencies": { "typescript": "~5.8.3" }
+}

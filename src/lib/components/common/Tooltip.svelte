@@ -219,7 +219,7 @@
     if (unstyled) {
       // Just positioning classes
     } else {
-      classes.push('px-2', 'py-1', 'text-[10px]', 'rounded', 'shadow-elevated', 'bg-surface-2', 'border', 'border-subtle', 'text-primary');
+      classes.push('px-2', 'py-1', 'text-[10px]', 'rounded', 'shadow-elevated', 'bg-elevated', 'border', 'border-subtle', 'text-primary');
     }
     
     if (!pointerEvents) {

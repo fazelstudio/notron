@@ -1,0 +1,11 @@
+import { bbedit, defaultSettingsBbedit } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "bbedit";
+export const label = "BBEdit";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = bbedit;
+export const settings = defaultSettingsBbedit;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/bbedit.ts" });

@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-monokai-dimmed",
+  "name": "theme-monokai-dimmed",
+  "displayName": "Monokai Dimmed",
+  "description": "Monokai Dimmed theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "monokai-dimmed",
+        "label": "Monokai Dimmed",
+        "uiTheme": "dark",
+        "path": "./themes/monokai-dimmed.ts"
+      }
+    ]
+  }
+}

@@ -21,6 +21,7 @@
 </script>
 
 <script lang="ts">
+  import { eventBus } from '../../utils/eventBus';
     import { uiStore } from '../../stores/ui';
   import { editorStore } from '../../stores/editor';
   import { invoke } from '@tauri-apps/api/core';
@@ -134,7 +135,7 @@
     const cs = caseSensitive;
     const ww = wholeWord;
 
-    // The module-level result cache is scoped to ONE workspace root. On a
+ // The part-level result cache is scoped to ONE workspace root. On a
     // workspace switch the stale results must never be shown for the new root.
     if (root !== cachedRoot) {
       cachedRoot = root;
@@ -155,7 +156,7 @@
       const optKey = `${cs ? '1' : '0'}${ww ? '1' : '0'}`;
       if (q === cachedQuery && untrack(() => results.length) > 0 && optKey === lastOptionKey) {
         // Already cached for this root — keep the results without re-searching
-        // (mirrors VSCode: switching away and back does not re-run the query).
+        // (mirrors the editor: switching away and back does not re-run the query).
         if (untrack(() => uiStore.getSnapshot().searchQuery) !== q) uiStore.setSearchQuery(q);
         if (untrack(() => uiStore.getSnapshot().replaceQuery) !== rq) uiStore.setReplaceQuery(rq);
       } else {
@@ -255,7 +256,7 @@
           },
           onDone: (meta) => {
             if (stale()) {
-              // A newer search or a workspace change superseded this one —
+              // A newer search or a workspace change superseded this one
               // never report its final counts.
               if (token === currentCancelToken) currentCancelToken = null;
               return;
@@ -353,9 +354,7 @@
       } else if (path === activePath) {
         // Live view → single CodeMirror transaction (undo-able); the editor's
         // updateListener marks it dirty and auto-saves through the normal path.
-        window.dispatchEvent(new CustomEvent('editor:action', {
-          detail: { action: 'replaceAll', path, options: replaceOpts }
-        }));
+        eventBus.emit('editor:action', { action: 'replaceAll', path, options: replaceOpts });
       } else {
         editorStore.applyReplacements(path, replaceOpts);
       }
@@ -394,7 +393,7 @@
       `${targetPaths.length} file(s), ${closed.length} written on disk, ${targetPaths.length - closed.length} open in editor.`,
     );
 
-    // Invalidate the module-level cache too — a stale copy must not be shown
+ // Invalidate the part-level cache too — a stale copy must not be shown
     // again when the panel is re-mounted (the replaced text no longer matches).
     cachedResults = [];
     cachedFilesScanned = 0;
@@ -470,7 +469,7 @@
     if (e > trimmed.length) e = trimmed.length;
     if (s >= trimmed.length) return [{ text: trimmed, isMatch: false }];
 
-    // Crop the preview to a window around the match, like VSCode.
+    // Crop the preview to a window around the match, like the editor.
     const WINDOW = 120;
     if (trimmed.length > WINDOW) {
       const startPos = Math.max(0, Math.min(s - 20, trimmed.length - WINDOW));
@@ -508,11 +507,9 @@
         const e = byteToCharIndex(res.text, res.end);
         const startCol = Math.max(s, 0) + 1;
         const endCol = Math.max(e, s) + 1;
-        window.dispatchEvent(new CustomEvent('request-open-file', {
-          detail: { path, line: res.line, column: startCol, endColumn: endCol }
-        }));
+        eventBus.emit('request-open-file', { path, line: res.line, column: startCol, endColumn: endCol });
       } else {
-        window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path } }));
+        eventBus.emit('request-open-file', { path });
       }
     } catch (err) { console.error("Failed to open file from search", err); }
   }
@@ -584,7 +581,7 @@
               <Tooltip content={item.path} wrapperClass="truncate min-w-0 flex-1 flex items-center" followCursor={true} hoverDelay={2000}>
                 <span class="text-xs truncate min-w-0 font-medium">{item.path.split(/[\/\\]/).pop()}</span>
               </Tooltip>
-              <span class="text-[10px] px-1 rounded-full shrink-0 bg-surface text-muted">{item.matchCount}</span>
+              <span class="text-[10px] px-1 rounded-full shrink-0 bg-panel text-muted">{item.matchCount}</span>
               <button aria-label={item.excluded ? "Include file" : "Exclude file"} class="shrink-0 p-0.5 rounded text-icon-default opacity-0 group-hover:opacity-100 hover:text-icon-active hover:bg-hover transition-all" onclick={(e) => toggleExclude(item.path, e)}>
                 <X size={12} />
               </button>

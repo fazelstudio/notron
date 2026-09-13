@@ -1,0 +1,26 @@
+{
+  "id": "notron.theme-notron-hc-light",
+  "name": "theme-notron-hc-light",
+  "displayName": "High Contrast Light",
+  "description": "High Contrast Light theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "notron-hc-light",
+        "label": "High Contrast Light",
+        "uiTheme": "light",
+        "path": "./themes/notron-hc-light.ts",
+        "isHighContrast": true
+      }
+    ]
+  }
+}

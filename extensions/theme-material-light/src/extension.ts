@@ -1,0 +1,11 @@
+import { materialLight, defaultSettingsMaterialLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "material-light";
+export const label = "Material Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = materialLight;
+export const settings = defaultSettingsMaterialLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/material-light.ts" });

@@ -1,3 +1,9 @@
+/**
+ * Source Control
+ *
+ * State store for source control.
+ */
+
 import { writable } from 'svelte/store';
 import { SC_SPLIT_DEFAULT } from '../constants';
 

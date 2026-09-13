@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { eventBus } from '../../utils/eventBus';
   import Modal from '../common/Modal.svelte';
   import { uiStore } from '../../stores/ui';
   import { invoke } from '@tauri-apps/api/core';
@@ -42,7 +43,7 @@
       uiStore.triggerExplorerRefresh();
       // Open through the central handler so the new file lands in the active
       // pane tab bar like any other open.
-      window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: fullPath } }));
+      eventBus.emit('request-open-file', { path: fullPath });
       onClose();
     } catch (err) { alert(`Failed to create file: ${err}`); }
   }
@@ -60,7 +61,7 @@
         type="text"
         placeholder="File name (e.g. index.tsx)"
         bind:value={fileName}
-        class="w-full px-3 py-2 text-sm rounded outline-none border bg-canvas border-subtle text-primary placeholder-muted focus:border-focus"
+        class="w-full px-3 py-2 text-sm rounded outline-none border bg-input border-subtle text-primary placeholder-muted focus:border-focus"
       />
     </div>
   {/snippet}

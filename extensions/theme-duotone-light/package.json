@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-duotone-light",
+  "name": "theme-duotone-light",
+  "displayName": "Duotone Light",
+  "description": "Duotone Light theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "duotone-light",
+        "label": "Duotone Light",
+        "uiTheme": "light",
+        "path": "./themes/duotone-light.ts"
+      }
+    ]
+  }
+}

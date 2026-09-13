@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { positionMenu, portal } from '../../utils/menuPosition';
   import type { Snippet } from 'svelte';
   
   export interface DropdownMenuItem {
@@ -27,6 +28,8 @@
 
   let open = $state(false);
   let openSubmenuId = $state<string | null>(null);
+  let triggerElement = $state<HTMLDivElement>();
+  let menuElement = $state<HTMLDivElement>();
 
   function toggle(e: MouseEvent) {
     e.stopPropagation();
@@ -60,18 +63,34 @@
       openSubmenuId = null;
     }
   }
+
+  $effect(() => {
+    if (!open || !triggerElement || !menuElement) return;
+    const frame = requestAnimationFrame(() => {
+      if (!triggerElement || !menuElement) return;
+      const anchor = triggerElement.getBoundingClientRect();
+      positionMenu(
+        menuElement,
+        { x: align === 'right' ? anchor.right : anchor.left, y: anchor.bottom + 4 },
+        { anchor, align },
+      );
+      if (matchWidth) menuElement.style.width = `${anchor.width}px`;
+    });
+    return () => cancelAnimationFrame(frame);
+  });
 </script>
 
 <div class="relative inline-block text-left {wrapperClass}">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div onclick={toggle} class="h-full flex items-center cursor-pointer">
+  <div bind:this={triggerElement} onclick={toggle} class="h-full flex items-center cursor-pointer">
     {@render trigger()}
   </div>
 
   {#if open}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
+      use:portal
       class="fixed inset-0 z-[99]"
       role="presentation"
       onclick={close}
@@ -79,12 +98,20 @@
       onkeydown={(e) => { if (e.key === 'Escape') close(); }}
     ></div>
     
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="absolute top-full mt-1 min-w-[160px] rounded-md border p-1 shadow-elevated z-[100] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary {align === 'right' ? 'right-0' : 'left-0'} {matchWidth ? 'w-full' : ''}"
+      bind:this={menuElement}
+      use:portal
+      role="presentation"
+      class="fixed min-w-[160px] rounded-md border p-1 z-[2147483646] animate-in fade-in duration-100 bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)] text-[var(--nt-overlay-fg)]"
+      style="box-shadow: var(--nt-overlay-shadow);"
+      onclick={(e) => e.stopPropagation()}
+      oncontextmenu={(e) => e.stopPropagation()}
     >
       {#each items as item (item.id || item.label)}
         {#if item.separator}
-          <div class="h-px my-1 bg-subtle"></div>
+          <div class="h-px my-1 bg-[var(--nt-overlay-border)]"></div>
         {:else}
           <div class="relative w-full" role="presentation" onmouseenter={() => handleMouseEnter(item)}>
             <button
@@ -104,11 +131,12 @@
             
             {#if item.items && openSubmenuId === (item.id || item.label)}
               <div
-                class="absolute top-0 mt-0 min-w-[160px] rounded-md border p-1 shadow-elevated z-[101] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary {align === 'right' ? 'right-full mr-1' : 'left-full ml-1'}"
+                class="absolute top-0 mt-0 min-w-[160px] rounded-md border p-1 z-[101] animate-in fade-in duration-100 bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)] text-[var(--nt-overlay-fg)] {align === 'right' ? 'right-full mr-1' : 'left-full ml-1'}"
+                style="box-shadow: var(--nt-overlay-shadow);"
               >
                 {#each item.items as subItem (subItem.id || subItem.label)}
                   {#if subItem.separator}
-                    <div class="h-px my-1 bg-subtle"></div>
+                    <div class="h-px my-1 bg-[var(--nt-overlay-border)]"></div>
                   {:else}
                     <button
                       class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors {!subItem.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted'}"

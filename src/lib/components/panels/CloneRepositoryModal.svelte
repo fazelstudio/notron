@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { eventBus } from '../../utils/eventBus';
   import { uiStore } from '../../stores/ui';
   import { cloneRepository, type GitProgress } from '../../services/git';
   import { open } from '@tauri-apps/plugin-dialog';
@@ -86,7 +87,7 @@
       uiStore.removeProcessToast();
       uiStore.closeCloneRepositoryModal();
       uiStore.addToast('Clone Repository', 'success', `Successfully cloned ${name}`);
-      window.dispatchEvent(new CustomEvent('request-workspace-switch', { detail: { path: target } }));
+      eventBus.emit('request-workspace-switch', { path: target });
       reset();
     } catch (e) {
       const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : String(e);

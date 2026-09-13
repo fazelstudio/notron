@@ -1,3 +1,6 @@
+// Stream
+//
+// Rust module.
 use serde::Serialize;
 use std::collections::HashMap;
 

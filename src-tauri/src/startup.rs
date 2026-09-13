@@ -1,3 +1,6 @@
+// Startup
+//
+// Rust module.
 use std::sync::Mutex;
 use std::time::Instant;
 use serde::Serialize;

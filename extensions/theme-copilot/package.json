@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-copilot",
+  "name": "theme-copilot",
+  "displayName": "Copilot",
+  "description": "Copilot theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "copilot",
+        "label": "Copilot",
+        "uiTheme": "dark",
+        "path": "./themes/copilot.ts"
+      }
+    ]
+  }
+}

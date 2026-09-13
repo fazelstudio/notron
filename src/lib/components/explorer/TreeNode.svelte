@@ -1,11 +1,9 @@
 <script lang="ts">
   import type { FlatTreeNode } from '../../utils/treeFlattener';
-  import { Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, Dot } from 'lucide-svelte';
-  import { settingsStore } from '../../stores/settings.svelte';
+  import { ChevronRight, ChevronDown, Loader2, Dot } from 'lucide-svelte';
   import { gitDecorationStore } from '../../stores/gitDecoration';
-  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
+  import FileIcon from '../common/FileIcon.svelte';
   import { getGitStatusStyle, getGitBadgeStyle, getIgnoredStyle } from '../../utils/gitStatusStyles';
-  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
 
   let { 
     node, 
@@ -44,27 +42,17 @@
 
   const indentStyle = $derived(`padding-left: ${node.depth * 12 + 8}px; padding-right: 8px; height: 26px;`);
   
-  const iconTheme = $derived(settingsStore.effectiveSettings.icon_theme);
   const gitDecoration = $derived($gitDecorationStore[node.path]);
 
-  /**
-   * The badge label shown to the right of the filename, exactly like VSCode:
-   * - Files: U / A / M / D / R / C / ! (conflict)
-   * - Folders (rollup): same character representing worst status inside
-   */
+  /** Badge character for git status (U, A, M, D, R, C, !). */
   const gitBadgeChar = $derived((() => {
     if (!gitDecoration) return '';
     const code = gitDecoration.code;
     if (code === 'Conflict') return '!';
-    return code; // U, A, M, D, R, C — all shown verbatim like VSCode
+    return code;
   })());
 
-  /**
-   * A gitignored entry (node.is_ignored) is shown but visually dimmed,
-   * exactly like VS Code does. If the file has an active git status badge
-   * (gitDecoration), that takes priority — a modified gitignored file is
-   * yellow, not grey.
-   */
+  /** True when the node is gitignored and has no active decoration. */
   const isGitIgnored = $derived(node.is_ignored === true && !gitDecoration);
 
   const gitIconStyle = $derived(getGitStatusStyle(gitDecoration?.code));
@@ -158,16 +146,7 @@
       class:text-muted={isGitIgnored && !gitDecoration && !isActive}
       style={gitIconStyle}
     >
-      {#if iconTheme === 'default' || !iconTheme}
-        {#if node.isExpanded}
-          <FolderOpen size={14} />
-        {:else}
-          <Folder size={14} />
-        {/if}
-      {:else if iconTheme === 'material'}
-        <!-- We use getMaterialFolderIcon which maps to folder-src, folder-public, etc. fallback is folder-base -->
-        <MaterialIcon name={node.name} isDir size={14} isOpen={node.isExpanded} />
-      {/if}
+      <FileIcon name={node.name} isDir isOpen={node.isExpanded} size={14} />
     </span>
   {:else}
     <!-- File icon: inherits git color when decorated -->
@@ -178,16 +157,10 @@
       class:text-icon-muted={isGitIgnored && !gitDecoration && !isActive}
       style={gitIconStyle}
     >
-      {#if iconTheme === 'default' || !iconTheme}
-        {@const Icon = getFileIcon(node.name)}
-        <Icon size={14} />
-      {:else if iconTheme === 'material'}
-        <MaterialIcon name={node.name} size={14} />
-      {/if}
+      <FileIcon name={node.name} size={14} />
     </span>
   {/if}
 
-  <!-- Filename: colored by git status exactly like VSCode -->
   <span
     class="truncate min-w-0 flex-1"
     class:text-primary={isActive}
@@ -198,13 +171,10 @@
     {node.name}
   </span>
   
-  <!-- Git badge: shown to the right like VSCode -->
   {#if gitDecoration}
     {#if gitDecoration.is_rollup}
-      <!-- Folder rollup badge: pill-shaped like VSCode folder decoration -->
       <span class="shrink-0 text-[10px] font-bold px-1.5 rounded-full border text-center ml-1" style={gitBadgeStyle}>{gitBadgeChar}</span>
     {:else}
-      <!-- File badge: single character flush-right like VSCode -->
       <span
         class="shrink-0 text-[10px] font-bold w-3.5 text-right ml-1"
         style={gitBadgeStyle}

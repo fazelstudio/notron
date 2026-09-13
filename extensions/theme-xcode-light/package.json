@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-xcode-light",
+  "name": "theme-xcode-light",
+  "displayName": "Xcode Light",
+  "description": "Xcode Light theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "xcode-light",
+        "label": "Xcode Light",
+        "uiTheme": "light",
+        "path": "./themes/xcode-light.ts"
+      }
+    ]
+  }
+}

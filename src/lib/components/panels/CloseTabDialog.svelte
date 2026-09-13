@@ -17,7 +17,7 @@
     <div class="flex justify-end gap-2">
       <button
         onclick={onCancel}
-        class="px-3 py-1.5 rounded text-sm transition-colors bg-surface border border-subtle hover:bg-hover text-primary"
+        class="px-3 py-1.5 rounded text-sm transition-colors bg-input border border-subtle hover:bg-hover text-primary"
       >Cancel</button>
       <button
         onclick={onDontSave}

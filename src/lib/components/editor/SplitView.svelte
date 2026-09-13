@@ -140,14 +140,14 @@
   }
   .split-handle {
     flex: 0 0 4px;
-    background: var(--color-border-subtle, #2d2d2d);
+    background: var(--border-subtle);
     transition: background 0.15s;
     position: relative;
     z-index: 10;
   }
   .split-handle:hover,
   .split-handle.split-dragging {
-    background: var(--accent, #007acc);
+    background: var(--accent);
   }
   .split-handle-vertical {
     cursor: ew-resize;

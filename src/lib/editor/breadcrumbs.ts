@@ -1,16 +1,17 @@
-import { registerLanguageMapping } from '@fazelstudio/codemirror-breadcrumbs';
 /**
- * Breadcrumb bar top-segment extension for the editor: theme + icon sync.
- * The breadcrumbs plugin renders its own built-in icons; this module swaps
- * them for the configured icon theme (default lucide or material) and keeps
- * them in sync after every plugin rebuild. Extracted from Editor.svelte.
+ * Breadcrumbs
+ *
+ * Theme and icon sync for the breadcrumb bar.
  */
+import { registerLanguageMapping } from '@fazelstudio/codemirror-breadcrumbs';
+
 
 import { EditorView } from '@codemirror/view';
-import { getMaterialIcon } from '../extensions/material-icons/iconMap';
-import { FILE_ICONS, lucideSvg, FILE } from '../extensions/material-icons/breadcrumbPathIcons';
-import { materialIconSvg } from '../extensions/material-icons/iconRenderer.svelte';
+import { getMaterialIcon } from '../../../extensions/icon-theme-material/src/iconMap';
+import { FILE_ICONS, lucideSvg, FILE } from '../../../extensions/icon-theme-material/src/breadcrumbPathIcons';
+import { materialIconSvg } from '../../../extensions/icon-theme-material/src/iconRenderer.svelte';
 import { settingsStore } from '../stores/settings.svelte';
+import { getIconProvider } from '../icon-theme/registry';
 
 /**
  * Puts the configured icon theme onto the breadcrumb top-bar segments.
@@ -51,10 +52,10 @@ export function syncBreadcrumbBarIcons(view: EditorView) {
       return;
     }
 
-    if (iconTheme === 'material') {
+    const provider = getIconProvider(iconTheme);
+    const isMaterial = provider?.isMaterial === true;
+    if (isMaterial) {
       const iconName = getMaterialIcon(label);
-      // Idempotent: keep the icon already in place — never remove/re-add it
-      // on every keystroke (that is what made the icons flicker).
       if (existing?.getAttribute('data-notron-icon') === `material:${iconName}`) return;
       existing?.remove();
       const iconEl = document.createElement('span');
@@ -62,7 +63,7 @@ export function syncBreadcrumbBarIcons(view: EditorView) {
       iconEl.setAttribute('data-notron-icon', `material:${iconName}`);
       iconEl.innerHTML = materialIconSvg(iconName, 14);
       seg.insertBefore(iconEl, labelEl || null);
-    } else if (iconTheme === 'default') {
+    } else {
       const ext = label.split('.').pop()?.toLowerCase();
       if (existing?.getAttribute('data-notron-icon') === `default:${ext || ''}`) return;
       existing?.remove();
@@ -112,9 +113,8 @@ export const notronBreadcrumbsTheme = EditorView.theme({
     lineHeight: '1',
     background: 'transparent',
     color: 'var(--text-secondary)',
-    // Top line is provided by the tab bar's border-b; only separate from
-    // the editor content below.
-    borderBottom: '1px solid var(--border-subtle)'
+    borderTop: '1px solid var(--nt-editor-border)',
+    borderBottom: '1px solid var(--nt-editor-border)'
   },
   '.cm-breadcrumbs-file': {
     padding: '2px 4px',

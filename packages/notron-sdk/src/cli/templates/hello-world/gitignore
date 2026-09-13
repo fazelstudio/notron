@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.ntrn
+.DS_Store

@@ -1,3 +1,6 @@
+// Discord
+//
+// Rust module.
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use serde::Serialize;
 use std::sync::Mutex;

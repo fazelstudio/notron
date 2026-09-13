@@ -1,3 +1,9 @@
+/**
+ * Run
+ *
+ * State store for run.
+ */
+
 import { writable } from 'svelte/store';
 
 export interface RunConfiguration {

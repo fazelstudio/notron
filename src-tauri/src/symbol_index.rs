@@ -1,3 +1,6 @@
+// Symbol Index
+//
+// Rust module.
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

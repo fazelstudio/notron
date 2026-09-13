@@ -1,0 +1,11 @@
+import { gruvboxLight, defaultSettingsGruvboxLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "gruvbox-light";
+export const label = "Gruvbox Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = gruvboxLight;
+export const settings = defaultSettingsGruvboxLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/gruvbox-light.ts" });

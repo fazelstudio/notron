@@ -25,7 +25,7 @@ const TONE_COLOR: Record<string, string> = {
   modified: 'var(--color-warning)',
   added: 'var(--color-success)',
   untracked: 'var(--color-untracked)',
-  ignored: 'var(--color-text-ignored, #5a5a5a)',
+  ignored: 'var(--color-text-ignored)',
   muted: 'var(--text-muted)',
 };
 
@@ -62,12 +62,12 @@ export function getGitStatusBadgeChar(code: string | undefined): string {
  * ensuring clear visual distinction from normal text.
  */
 export function getIgnoredStyle(): string {
-  return 'color: var(--color-text-ignored, #5a5a5a)';
+  return 'color: var(--color-text-ignored)';
 }
 
 /**
  * DECO-005: Human-readable tooltip for git status codes.
- * Format: "filename - Status" (matches VSCode behavior).
+ * Format: "filename - Status" (matches the editor behavior).
  * For folder rollups: "folder - Contains [status] items" or "folder - Contains emphasized items".
  * If symlinkTarget is provided, shows "filename - Symbolic Link to target".
  */
@@ -85,7 +85,7 @@ export function getGitStatusTooltip(
     return `${fileName} - Symbolic Link to ${symlinkTarget}`;
   }
 
-  // VSCode-style folder rollup tooltip
+  // the editor-style folder rollup tooltip
   if (isRollup) {
     let statusDescription: string;
     switch (code) {

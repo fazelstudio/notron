@@ -44,9 +44,9 @@
 <svelte:window onclick={handleWindowClick} />
 
 <div bind:this={container} class="flex flex-col gap-1.5 relative w-full">
-  <div class="flex flex-wrap items-center gap-1.5 border rounded p-1.5 border-subtle bg-canvas transition-colors min-h-[36px]" class:border-focus={isFocused}>
+  <div class="flex flex-wrap items-center gap-1.5 border rounded p-1.5 border-subtle bg-input transition-colors min-h-[36px]" class:border-focus={isFocused}>
     {#each selected as item}
-      <div class="flex items-center gap-1 px-1.5 py-0.5 bg-surface-2 rounded text-xs border border-subtle">
+      <div class="flex items-center gap-1 px-1.5 py-0.5 bg-elevated rounded text-xs border border-subtle">
         {#if Icon}<Icon size={12} class="text-accent" />{/if}
         <Tooltip content={item}>
           <span class="truncate max-w-[150px]">{item.split('/').pop()}</span>
@@ -68,7 +68,7 @@
   
   <!-- Dropdown -->
   {#if query.trim().length > 0 && isFocused}
-    <div class="absolute z-50 top-[100%] left-0 w-full flex flex-col border border-subtle rounded mt-1 bg-surface-2 overflow-y-auto shadow-elevated" style="max-height: {5 * 32}px;">
+    <div class="absolute z-50 top-[100%] left-0 w-full flex flex-col border border-subtle rounded mt-1 bg-elevated overflow-y-auto shadow-elevated" style="max-height: {5 * 32}px;">
       {#if options.length > 0}
         {#each options as opt}
           <button onclick={() => handleAdd(opt)} class="flex items-center gap-2 px-3 h-[32px] text-xs text-left hover:bg-hover transition-colors shrink-0">

@@ -1,0 +1,11 @@
+import { whiteLight, defaultSettingsWhiteLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "white-light";
+export const label = "White Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = whiteLight;
+export const settings = defaultSettingsWhiteLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/white-light.ts" });

@@ -1,3 +1,9 @@
+/**
+ * Editor
+ *
+ * State store for editor.
+ */
+
 import { writable, derived } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { getHumanReadableError } from '../utils/error';
@@ -46,7 +52,7 @@ export interface EditorTab {
   currentHistoryIndex?: number;
   isDiff?: boolean;
   diffOriginalContent?: string | null;
-  /** Diff tab extras (labels + right-side editability) — mirrors VSCode's
+  /** Diff tab extras (labels + right-side editability) — mirrors the editor's
    *  "Working Tree" (editable right side) vs commit-compare (read-only) tabs. */
   diffOriginalLabel?: string;
   diffCurrentLabel?: string;
@@ -212,7 +218,7 @@ function createEditorStore() {
   /** Close tabs for a deleted file/folder (exact match or nested under a
    *  deleted directory). Clean tabs are closed everywhere; dirty tabs are kept
    *  open and marked `deleted` so unsaved edits can still be recovered — same
-   *  behavior as VSCode. */
+   *  behavior as the editor. */
   function closeTabsOfDeletedPath(path: string) {
     const affected = getTabsSnapshot().filter((t) =>
       t.path === path
@@ -268,16 +274,28 @@ function createEditorStore() {
       })
     );
 
+    // Keep split panes in lockstep — SplitEditorPane reads tab.content from
+    // the split store when mounting the code editor, while MarkdownPreview
+    // reads editorStore. Desync here made preview look fine and code empty.
+    splitStore.updateTabInAllPanes({
+      id,
+      content,
+      originalContent: content,
+      isModified: false,
+      status: 'active',
+    } as any);
+
     // Notify a live CodeMirror view AFTER the store update so it can compare
     // against the updated buffer and apply the new content.
     window.dispatchEvent(new CustomEvent('editor:sync-content', { detail: { tabId: id, content } }));
   }
 
   function updateContent(id: string, content: string) {
+    let isModified = false;
     tabs.update((state) =>
       state.map((t) => {
         if (t.id === id) {
-          const isModified = content !== t.originalContent;
+          isModified = content !== t.originalContent;
           return {
             ...t,
             content,
@@ -290,6 +308,14 @@ function createEditorStore() {
         return t;
       })
     );
+    // Mirror content into split panes so preview↔code switches use the same buffer.
+    splitStore.updateTabInAllPanes({
+      id,
+      content,
+      isModified,
+      status: isModified ? 'modified' : 'active',
+      ...(isModified ? { isPreview: false } : {}),
+    } as any);
     scheduleAutoSave(id);
   }
 
@@ -317,20 +343,28 @@ function createEditorStore() {
   }
 
   function markSaved(id: string) {
+    let nextStatus: 'active' | 'loaded' = 'loaded';
     tabs.update((state) =>
       state.map((t) => {
         if (t.id === id) {
+          nextStatus = t.content !== null ? 'active' : 'loaded';
           return {
             ...t,
             originalContent: t.content,
             isModified: false,
             autoSavePaused: false,
-            status: t.content !== null ? 'active' : 'loaded',
+            status: nextStatus,
           };
         }
         return t;
       })
     );
+    splitStore.updateTabInAllPanes({
+      id,
+      isModified: false,
+      autoSavePaused: false,
+      status: nextStatus,
+    } as any);
   }
 
   function markTabDeleted(id: string) {

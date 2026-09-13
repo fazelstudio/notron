@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { eventBus } from '../../utils/eventBus';
   import { uiStore } from '../../stores/ui';
   import { sourceControlStore } from '../../stores/sourceControl';
   import { buildChangeTree } from '../../utils/gitChangeTree';
@@ -10,11 +11,12 @@
   import { onMount } from 'svelte';
   import { gitRepoStore } from '../../stores/gitRepo';
   import type { GitFileStatus } from '../../services/git';
-  import { Plus, Minus, RefreshCw, Upload, Download, Loader2, FileText, ChevronDown, ChevronRight, GitBranch, MoreHorizontal, Target, Cloud, Undo2, Settings, X, Check, Copy, Folder, FolderOpen } from 'lucide-svelte';
+  import { Plus, Minus, RefreshCw, Upload, Download, Loader2, FileText, ChevronDown, ChevronRight, GitBranch, MoreHorizontal, Target, Cloud, Undo2, Settings, X, Check, Copy } from 'lucide-svelte';
+  import { commandRegistry } from '../../commands/registry';
   import Tooltip from '../common/Tooltip.svelte';
-  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
+  import FileIcon from '../common/FileIcon.svelte';
+  import { getFileIcon } from '../../icon-theme/default';
   import { getGitStatusStyle, getExpandedFileStatusStyle } from '../../utils/gitStatusStyles';
-  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
 
   const ui = uiStore;
@@ -135,53 +137,48 @@
   }
 
   async function handleStage(file: GitFileStatus) {
-    await gitRepoStore.stage(file.path);
+    await commandRegistry.execute('git.stage', file.path);
   }
 
   async function handleUnstage(file: GitFileStatus) {
-    await gitRepoStore.unstage(file.path);
+    await commandRegistry.execute('git.unstage', file.path);
   }
 
   async function handleStageAll() {
-    await gitRepoStore.stageAll();
+    await commandRegistry.execute('git.stageAll');
   }
 
   async function handleUnstageAll() {
-    await gitRepoStore.unstageAll();
+    await commandRegistry.execute('git.unstageAll');
   }
 
   async function handleDiscard(file: GitFileStatus) {
     if (!confirm(`Discard changes to ${file.path}? This cannot be undone.`)) return;
-    await gitRepoStore.discard(file.path);
+    await commandRegistry.execute('git.discard', file.path);
   }
 
   async function handlePush() {
-    const ok = await gitRepoStore.sync('git_push', 'push');
-    if (ok) uiStore.addToast('Git Push', 'success', 'Successfully pushed to remote');
+    await commandRegistry.execute('git.push');
   }
 
   async function handlePull() {
-    const ok = await gitRepoStore.sync('git_pull', 'pull');
-    if (ok) {
-      uiStore.addToast('Git Pull', 'success', 'Successfully pulled from remote');
-    }
+    await commandRegistry.execute('git.pull');
   }
 
   async function handleFetch() {
-    const ok = await gitRepoStore.sync('git_fetch', 'fetch');
-    if (ok) uiStore.addToast('Git Fetch', 'success', 'Fetched from remote');
+    await commandRegistry.execute('git.fetch');
   }
 
   async function handleCancelSync() {
-    await gitRepoStore.cancelSync();
+    await commandRegistry.execute('git.cancel');
   }
 
   async function handleRefresh() {
-    await gitRepoStore.refresh();
+    await commandRegistry.execute('git.refresh');
   }
 
   async function handleRedetect() {
-    await gitRepoStore.reDetect();
+    await commandRegistry.execute('git.reDetect');
   }
 
   function openManualPathSettings() {
@@ -308,7 +305,7 @@
 
     const isImage = /\.(png|jpe?g|gif|webp|ico)$/i.test(name);
     if (isImage) {
-      window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: fullPath } }));
+      eventBus.emit('request-open-file', { path: fullPath });
       return;
     }
 
@@ -548,7 +545,7 @@
     {#each nodes as node (node.path)}
       {#if node.type === 'folder'}
         <div class="relative flex flex-col">
-          <div class="sticky shadow-[0_1px_2px_rgba(0,0,0,0.1)] h-7 flex items-center" style="background-color: var(--tree-bg, var(--color-surface)); top: {28 + depth * 28}px; z-index: {20 - depth};">
+          <div class="sticky shadow-elevated-sm h-7 flex items-center" style="background-color: var(--tree-bg, var(--color-surface)); top: {28 + depth * 28}px; z-index: {20 - depth};">
             <div role="button" tabindex="0" class="flex-1 flex items-center py-1 hover:bg-hover group cursor-pointer h-7" style="padding-left: calc(var(--base-pad, 0px) + {6 + depth * 14}px); padding-right: 12px;" onclick={() => toggleCollapse(node.path)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleCollapse(node.path); }}>
               <span class="w-3.5 mr-1 flex items-center justify-center text-icon-default shrink-0">
                 {#if node.count > 0}
@@ -559,17 +556,9 @@
                   {/if}
                 {/if}
               </span>
-              {#if iconTheme === 'default' || !iconTheme}
-                {#if collapsed.has(node.path)}
-                  <Folder class="w-4 h-4 mr-1.5 shrink-0 text-icon-default" />
-                {:else}
-                  <FolderOpen class="w-4 h-4 mr-1.5 shrink-0 text-icon-default" />
-                {/if}
-              {:else if iconTheme === 'material'}
-                <MaterialIcon name={node.name} isDir size={14} isOpen={!collapsed.has(node.path)} />
-              {/if}
+              <FileIcon name={node.name} isDir size={14} isOpen={!collapsed.has(node.path)} iconClass="mr-1.5 shrink-0" />
               <span class="text-xs truncate flex-1">{node.name}</span>
-              <span class="bg-surface-3 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-muted">{node.count}</span>
+              <span class="bg-panel-3 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-muted">{node.count}</span>
             </div>
           </div>
           {#if !collapsed.has(node.path)}
@@ -586,10 +575,10 @@
     {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
     <div role="button" tabindex="0" class="flex items-center justify-between py-1 hover:bg-hover group cursor-pointer h-8" style="padding-left: calc(var(--base-pad, 0px) + {12 + depth * 14}px); padding-right: 12px;" onclick={() => onOpen(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(file); }}>
       <div class="flex items-center gap-2 overflow-hidden flex-1">
-        {#if iconTheme === 'default' || !iconTheme}
+        {#if iconTheme === 'material'}
+          <FileIcon name={file.path.split('/').pop() || ''} size={14} />
+        {:else}
           <Icon size={14} class="shrink-0" style={statusStyle} />
-        {:else if iconTheme === 'material'}
-          <MaterialIcon name={file.path.split('/').pop() || ''} size={14} />
         {/if}
         <span class="text-sm truncate" style={statusStyle}>{file.path.split('/').pop()}</span>
         <span class="text-[10px] text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
@@ -611,7 +600,7 @@
   {/snippet}
 
 
-<div class="flex flex-col h-full bg-surface">
+<div class="flex flex-col h-full bg-panel">
   {#if availabilityLoading}
     <div class="flex flex-col items-center justify-center h-full p-4 gap-3 text-center">
       <Loader2 class="w-5 h-5 animate-spin text-accent" />
@@ -626,13 +615,13 @@
         <div class="flex items-center gap-2">
           <button
             onclick={handleRedetect}
-            class="flex items-center gap-1 px-3 py-1.5 bg-surface-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors font-medium"
+            class="flex items-center gap-1 px-3 py-1.5 bg-panel-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors font-medium"
           >
             <RefreshCw class="w-3.5 h-3.5" /> Re-detect
           </button>
           <button
             onclick={openManualPathSettings}
-            class="flex items-center gap-1 px-3 py-1.5 bg-surface-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors font-medium"
+            class="flex items-center gap-1 px-3 py-1.5 bg-panel-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors font-medium"
           >
             <Settings class="w-3.5 h-3.5" /> Set Path…
           </button>
@@ -644,12 +633,12 @@
           <input
             bind:value={manualPathInput}
             placeholder="/usr/bin/git or C:\Program Files\Git\cmd\git.exe"
-            class="w-full bg-surface-2 border border-subtle focus:border-accent outline-none rounded p-2 text-xs text-primary"
+            class="w-full bg-panel-2 border border-subtle focus:border-accent outline-none rounded p-2 text-xs text-primary"
           />
           <div class="flex items-center gap-2 justify-end">
             <button onclick={saveManualPath} class="px-3 py-1.5 bg-accent hover:bg-accent-hover text-on-accent rounded text-xs transition-colors font-medium">Save</button>
             {#if availability.path}
-              <button onclick={clearManualPath} class="px-3 py-1.5 bg-surface-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors">Clear</button>
+              <button onclick={clearManualPath} class="px-3 py-1.5 bg-panel-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors">Clear</button>
             {/if}
             <button onclick={() => showManualPath = false} class="p-1.5 rounded hover:bg-hover text-icon-default"><X class="w-3.5 h-3.5" /></button>
           </div>
@@ -673,7 +662,7 @@
     </div>
   {:else if repo}
     <!-- Git Actions Header -->
-    <div class="p-3 border-b border-subtle flex flex-col gap-2 bg-surface">
+    <div class="p-3 border-b border-subtle flex flex-col gap-2 bg-panel">
       <div class="flex items-center justify-between mb-1 relative">
         <span class="text-xs font-semibold text-primary">CHANGES</span>
         <div class="flex items-center gap-1">
@@ -692,7 +681,7 @@
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="fixed inset-0 z-40" onclick={() => showChangesMenu = false}></div>
-          <div class="absolute right-0 top-6 z-50 w-48 bg-surface border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
+          <div class="absolute right-0 top-6 z-50 w-48 bg-panel border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
             <button onclick={() => { sourceControlStore.setChangesView('list'); showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
               <span class="w-4 flex justify-center shrink-0 mr-1">{#if !isChangesTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
               View as List
@@ -714,7 +703,7 @@
         <textarea
           bind:value={commitMessage}
           placeholder="Message (Ctrl+Enter to commit)"
-          class="w-full bg-surface-2 border border-subtle focus:border-accent outline-none rounded p-2 text-xs text-primary resize-none min-h-[64px]"
+          class="w-full bg-panel-2 border border-subtle focus:border-accent outline-none rounded p-2 text-xs text-primary resize-none min-h-[64px]"
           onkeydown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
               handleCommit();
@@ -728,7 +717,7 @@
           <button
             onclick={handlePush}
             disabled={syncing}
-            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-surface-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border border-transparent"
+            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border border-transparent"
           >
             {#if syncing}
               <Loader2 class="w-4 h-4 animate-spin" />
@@ -750,7 +739,7 @@
               }
             }}
             disabled={syncing}
-            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-surface-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border border-transparent"
+            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border border-transparent"
           >
             {#if syncing}
               <Loader2 class="w-4 h-4 animate-spin" />
@@ -762,7 +751,7 @@
         {:else}
           <button
             disabled={true}
-            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent disabled:bg-surface-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border disabled:border-subtle border-transparent"
+            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border disabled:border-subtle border-transparent"
           >
             <span>Commit</span>
           </button>
@@ -771,7 +760,7 @@
         <button
           onclick={handleCommit}
           disabled={isCommitting || !commitMessage.trim()}
-          class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-surface-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border disabled:border-subtle border-transparent"
+          class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border disabled:border-subtle border-transparent"
         >
           {#if isCommitting}
             <Loader2 class="w-4 h-4 animate-spin" />
@@ -782,7 +771,7 @@
 
       {#if syncing && progress}
         <div class="flex flex-col gap-1 mt-1">
-          <div class="w-full h-1 bg-surface-3 rounded overflow-hidden">
+          <div class="w-full h-1 bg-panel-3 rounded overflow-hidden">
             <div
               class="h-full bg-accent transition-all"
               style="width: {Math.min(progress.percent ?? 100, 100)}%"
@@ -807,7 +796,7 @@
 
         <div class="flex-1 overflow-y-auto">
           {#if repo.conflicted.length > 0}
-            <div class="flex items-center justify-between px-3 py-1 bg-surface-2 group sticky top-0 z-10 border-b border-subtle shadow-elevated-sm">
+            <div class="flex items-center justify-between px-3 py-1 bg-panel-2 group sticky top-0 z-10 border-b border-subtle shadow-elevated-sm">
               <span class="text-[10px] font-semibold uppercase" style="color: var(--accent)">Conflicts</span>
             </div>
             <div class="flex flex-col mb-2">
@@ -822,7 +811,7 @@
           {/if}
 
           {#if repo.staged.length > 0}
-            <div class="flex items-center justify-between px-3 py-1 bg-surface-2 group sticky top-0 z-30 h-7 border-b border-subtle shadow-elevated-sm">
+            <div class="flex items-center justify-between px-3 py-1 bg-panel-2 group sticky top-0 z-30 h-7 border-b border-subtle shadow-elevated-sm">
               <span class="text-[10px] font-semibold uppercase text-secondary">Staged Changes</span>
               <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Tooltip content="Unstage All Changes">
@@ -844,7 +833,7 @@
           {/if}
 
           {#if repo.unstaged.length > 0 || repo.untracked.length > 0}
-            <div class="flex items-center justify-between px-3 py-1 bg-surface-2 group sticky top-0 z-30 h-7 border-y border-subtle shadow-elevated-sm mt-2">
+            <div class="flex items-center justify-between px-3 py-1 bg-panel-2 group sticky top-0 z-30 h-7 border-y border-subtle shadow-elevated-sm mt-2">
               <span class="text-[10px] font-semibold uppercase text-secondary">Changes</span>
               <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Tooltip content="Stage All Changes">
@@ -864,7 +853,7 @@
               {/if}
 
               {#if repo.untracked.length > 0}
-                <div class="px-3 py-1 text-[10px] font-semibold uppercase text-secondary bg-surface-2/50 mt-1">Untracked</div>
+                <div class="px-3 py-1 text-[10px] font-semibold uppercase text-secondary bg-panel-2/50 mt-1">Untracked</div>
                 {#if isChangesTreeView}
                 {@render renderTreeNodes(untrackedTree, 0, stageOnlyActions, 'U')}
               {:else}
@@ -891,16 +880,16 @@
 
       <!-- Collapsed header for Changes if hidden -->
       {#if !changesVisible}
-        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-surface-2 border-b border-subtle cursor-pointer hover:bg-hover shrink-0" onclick={() => changesVisible = !changesVisible} onkeydown={(e) => { if (e.key === 'Enter') changesVisible = !changesVisible; }}>
+        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-panel-2 border-b border-subtle cursor-pointer hover:bg-hover shrink-0" onclick={() => changesVisible = !changesVisible} onkeydown={(e) => { if (e.key === 'Enter') changesVisible = !changesVisible; }}>
           <ChevronRight class="w-3.5 h-3.5 mr-1 text-icon-default" />
           <span class="text-xs font-semibold uppercase text-secondary">Changes</span>
-          <span class="ml-auto bg-surface-3 rounded-full px-1.5 py-0.5 text-[10px]">{repo.staged.length + repo.unstaged.length + repo.untracked.length + repo.conflicted.length}</span>
+          <span class="ml-auto bg-panel-3 rounded-full px-1.5 py-0.5 text-[10px]">{repo.staged.length + repo.unstaged.length + repo.untracked.length + repo.conflicted.length}</span>
         </div>
       {/if}
 
       <!-- Collapsed header for Graph if hidden -->
       {#if !graphVisible}
-        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-surface-2 border-b border-subtle cursor-pointer hover:bg-hover shrink-0" onclick={() => graphVisible = !graphVisible} onkeydown={(e) => { if (e.key === 'Enter') graphVisible = !graphVisible; }}>
+        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-panel-2 border-b border-subtle cursor-pointer hover:bg-hover shrink-0" onclick={() => graphVisible = !graphVisible} onkeydown={(e) => { if (e.key === 'Enter') graphVisible = !graphVisible; }}>
           <ChevronRight class="w-3.5 h-3.5 mr-1 text-icon-default" />
           <span class="text-xs font-semibold uppercase text-secondary">Graph</span>
         </div>
@@ -908,7 +897,7 @@
 
       <!-- Bottom Section: GRAPH -->
       <div class="flex flex-col overflow-hidden" style="flex: {graphVisible ? graphFlex : 0}; min-height: {graphVisible ? '40px' : '0'}; display: {graphVisible ? 'flex' : 'none'};">
-        <div class="flex items-center justify-between px-2 py-1 bg-surface-2 border-b border-y border-subtle shrink-0 relative">
+        <div class="flex items-center justify-between px-2 py-1 bg-panel-2 border-b border-y border-subtle shrink-0 relative">
           <div role="button" tabindex="0" class="flex items-center cursor-pointer hover:bg-hover flex-1" onclick={() => graphVisible = !graphVisible} onkeydown={(e) => { if (e.key === 'Enter') graphVisible = !graphVisible; }}>
             <ChevronDown class="w-3.5 h-3.5 mr-1 text-icon-default" />
             <span class="text-xs font-semibold uppercase text-secondary">Graph</span>
@@ -953,7 +942,7 @@
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="fixed inset-0 z-40" onclick={() => showGraphMenu = false}></div>
-            <div class="absolute right-0 top-8 z-50 w-48 bg-surface border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
+            <div class="absolute right-0 top-8 z-50 w-48 bg-panel border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
               <button onclick={() => { sourceControlStore.setGraphView('list'); showGraphMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
                 <span class="w-4 flex justify-center shrink-0 mr-1">{#if !isGraphTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
                 View as List
@@ -965,7 +954,7 @@
             </div>
           {/if}
         </div>
-        <div class="flex-1 overflow-y-auto bg-surface relative">
+        <div class="flex-1 overflow-y-auto bg-panel relative">
           {#if commits.length > 0}
             <div class="absolute left-[21px] top-0 bottom-0 w-[2px] bg-subtle z-0"></div>
             {#each commits as commit (commit.hash)}
@@ -977,14 +966,14 @@
                   unstyled={true} 
                   pointerEvents={true}
                   hoverDelay={400}
-                  wrapperClass="flex w-full items-center hover:bg-hover group cursor-pointer h-7 sticky top-0 z-30 bg-surface border-y border-transparent hover:border-subtle transition-colors"
+                  wrapperClass="flex w-full items-center hover:bg-hover group cursor-pointer h-7 sticky top-0 z-30 bg-panel border-y border-transparent hover:border-subtle transition-colors"
                 >
                   {#snippet customContent()}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
-                    <div class="w-[360px] bg-surface-2 border border-subtle rounded-md shadow-elevated flex flex-col pointer-events-auto cursor-default text-primary relative ml-2" onclick={(e) => e.stopPropagation()}>
+                    <div class="w-[360px] bg-panel-2 border border-subtle rounded-md shadow-elevated flex flex-col pointer-events-auto cursor-default text-primary relative ml-2" onclick={(e) => e.stopPropagation()}>
                       <!-- Arrow (placed behind container to hide its right half) -->
-                      <div class="absolute -left-[6px] top-1/2 -translate-y-1/2 w-3 h-3 bg-surface-2 border-l border-b border-subtle rotate-45 -z-10 rounded-sm"></div>
+                      <div class="absolute -left-[6px] top-1/2 -translate-y-1/2 w-3 h-3 bg-panel-2 border-l border-b border-subtle rotate-45 -z-10 rounded-sm"></div>
                       
                       <!-- Header & Body -->
                       <div class="p-3 flex flex-col gap-2 relative z-10 rounded-t-md">
@@ -1006,7 +995,7 @@
                       <div class="h-px w-full bg-subtle"></div>
                       
                       <!-- Stats -->
-                      <div class="px-3 py-2 text-[11px] text-muted font-medium bg-surface-2">
+                      <div class="px-3 py-2 text-[11px] text-muted font-medium bg-panel-2">
                         {#if commit.stats}
                           {commit.stats}
                         {:else}
@@ -1018,9 +1007,9 @@
                       <div class="h-px w-full bg-subtle"></div>
                       
                       <!-- Footer hashes -->
-                      <div class="px-3 py-2 bg-surface-3/30 border-t border-subtle rounded-b-md flex items-center gap-2 text-[11px] relative z-10 group/hash">
+                      <div class="px-3 py-2 bg-panel-3/30 border-t border-subtle rounded-b-md flex items-center gap-2 text-[11px] relative z-10 group/hash">
                         <span class="font-mono text-primary flex-1">{commit.hash}</span>
-                        <button class="p-1 rounded hover:bg-surface-2 text-icon-default opacity-0 group-hover/hash:opacity-100 transition-opacity" onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(commit.hash); }} title="Copy Commit Hash">
+                        <button class="p-1 rounded hover:bg-panel-2 text-icon-default opacity-0 group-hover/hash:opacity-100 transition-opacity" onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(commit.hash); }} title="Copy Commit Hash">
                           <Copy class="w-3.5 h-3.5" />
                         </button>
                         {#if $gitRepoStore.repo?.remote_url}
@@ -1036,8 +1025,8 @@
 
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="flex w-full items-center h-full px-2" onclick={() => toggleCommitExpansion(commit.hash)}>
-                    <div class="flex items-center justify-center w-5 h-5 shrink-0 bg-surface rounded-full">
-                      <div class="w-2 h-2 rounded-full border-2 border-accent bg-surface z-10"></div>
+                    <div class="flex items-center justify-center w-5 h-5 shrink-0 bg-panel rounded-full">
+                      <div class="w-2 h-2 rounded-full border-2 border-accent bg-panel z-10"></div>
                     </div>
                     <div class="flex items-center flex-1 overflow-hidden pr-2">
                       <span class="text-xs text-primary truncate font-medium flex-1">{commit.message}</span>
@@ -1058,17 +1047,17 @@
                     <span class="text-[10px] text-muted shrink-0 w-20 truncate text-right group-hover:hidden">{commit.author}</span>
                     <div class="hidden group-hover:flex items-center gap-1 shrink-0 w-20 justify-end">
                       <Tooltip content="Copy Commit Hash">
-                        <button class="p-1 rounded hover:bg-surface-2 text-icon-default" onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(commit.hash); }}>
+                        <button class="p-1 rounded hover:bg-panel-2 text-icon-default" onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(commit.hash); }}>
                           <FileText class="w-3 h-3" />
                         </button>
                       </Tooltip>
                       <Tooltip content="Checkout Commit">
-                        <button class="p-1 rounded hover:bg-surface-2 text-icon-default" onclick={(e) => { e.stopPropagation(); uiStore.addToast('Checkout', 'success', `Checkout ${commit.hash} not implemented yet`); }}>
+                        <button class="p-1 rounded hover:bg-panel-2 text-icon-default" onclick={(e) => { e.stopPropagation(); uiStore.addToast('Checkout', 'success', `Checkout ${commit.hash} not implemented yet`); }}>
                           <Target class="w-3 h-3" />
                         </button>
                       </Tooltip>
                       <Tooltip content="More Actions">
-                        <button class="p-1 rounded hover:bg-surface-2 text-icon-default" onclick={(e) => { e.stopPropagation(); }}>
+                        <button class="p-1 rounded hover:bg-panel-2 text-icon-default" onclick={(e) => { e.stopPropagation(); }}>
                           <MoreHorizontal class="w-3 h-3" />
                         </button>
                       </Tooltip>
@@ -1078,7 +1067,7 @@
 
                 <!-- Expanded Files -->
                 {#if expandedCommit === commit.hash}
-                  <div class="flex flex-col bg-surface-2 border-y border-subtle py-1" style="--base-pad: 24px; --tree-bg: var(--color-surface-2);">
+                  <div class="flex flex-col bg-panel-2 border-y border-subtle py-1" style="--base-pad: 24px; --tree-bg: var(--color-surface-2);">
                     {#if expandedCommitLoading}
                       <div class="text-[10px] text-muted px-4 py-2 flex items-center gap-2">
                         <Loader2 class="w-3 h-3 animate-spin" /> Loading files...
@@ -1113,7 +1102,7 @@
 
     <!-- Branch info at the bottom -->
     {#if repo.branch}
-      <div class="px-3 py-1.5 border-t border-subtle bg-surface-2 shrink-0">
+      <div class="px-3 py-1.5 border-t border-subtle bg-panel-2 shrink-0">
         <span class="text-xs font-semibold text-muted flex items-center gap-1.5">
           <GitBranch class="w-3.5 h-3.5" /> {repo.branch}
           {#if repo.ahead > 0 || repo.behind > 0}

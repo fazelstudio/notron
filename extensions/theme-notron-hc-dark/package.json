@@ -1,0 +1,26 @@
+{
+  "id": "notron.theme-notron-hc-dark",
+  "name": "theme-notron-hc-dark",
+  "displayName": "High Contrast Dark",
+  "description": "High Contrast Dark theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "notron-hc-dark",
+        "label": "High Contrast Dark",
+        "uiTheme": "dark",
+        "path": "./themes/notron-hc-dark.ts",
+        "isHighContrast": true
+      }
+    ]
+  }
+}

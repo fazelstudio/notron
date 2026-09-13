@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-tokyo-night-storm",
+  "name": "theme-tokyo-night-storm",
+  "displayName": "Tokyo Night Storm",
+  "description": "Tokyo Night Storm theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "tokyo-night-storm",
+        "label": "Tokyo Night Storm",
+        "uiTheme": "dark",
+        "path": "./themes/tokyo-night-storm.ts"
+      }
+    ]
+  }
+}

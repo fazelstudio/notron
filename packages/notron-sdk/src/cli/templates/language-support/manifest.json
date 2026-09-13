@@ -1,0 +1,15 @@
+{
+  "id": "acme.language-support",
+  "name": "language-support",
+  "displayName": "Language Support (stub)",
+  "description": "Stub template for language support — belum lengkap (Fase 5 stub).",
+  "version": "0.1.0",
+  "publisher": "acme",
+  "engines": { "notron": "^0.1.0" },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onLanguage:myLang"],
+  "contributes": {
+    "languages": [{ "id": "myLang", "extensions": [".my"] }],
+    "grammars": [{ "language": "myLang", "scopeName": "source.my", "path": "./syntaxes/my.tmLanguage.json" }]
+  }
+}

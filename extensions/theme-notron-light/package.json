@@ -1,0 +1,23 @@
+{
+  "id": "notron.theme-notron-light",
+  "name": "theme-notron-light",
+  "displayName": "Notron Light",
+  "description": "Notron Light theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": ["*"],
+  "contributes": {
+    "themes": [
+      {
+        "id": "notron-light",
+        "label": "Notron Light",
+        "uiTheme": "light",
+        "path": "./themes/notron-light.ts"
+      }
+    ]
+  }
+}

@@ -1,3 +1,9 @@
+/**
+ * Split
+ *
+ * State store for split.
+ */
+
 import { writable } from 'svelte/store';
 import type { EditorTab } from './editor';
 import { generateId } from '../constants';

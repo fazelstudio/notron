@@ -1,3 +1,6 @@
+// Watcher Service
+//
+// Rust module.
 use notify::{Event, EventKind, RecursiveMode, RecommendedWatcher, Watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

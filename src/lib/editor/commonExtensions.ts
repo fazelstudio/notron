@@ -1,6 +1,7 @@
 /**
- * Shared CodeMirror 6 extensions used by every editor instance (full and
- * large-file variants). Extracted from Editor.svelte's <script module>.
+ * Common Editor Extensions
+ *
+ * Shared CodeMirror extensions for all editor instances.
  */
 
 import {
@@ -24,12 +25,13 @@ import {
   closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap,
 } from '@codemirror/autocomplete';
 import { indentationMarkers } from '@replit/codemirror-indentation-markers';
+import { snippetCompletionExtensions } from './snippetCompletion';
 import { urlLinkExtension } from './urlExtension';
 
 export const COMMON_EXTENSIONS: Extension[] = [
   EditorView.theme({
     '&': { backgroundColor: 'transparent !important', height: '100%' },
-    '.cm-gutters': { backgroundColor: 'var(--bg-canvas) !important', borderRight: 'none !important', borderLeft: 'none !important' },
+    '.cm-gutters': { backgroundColor: 'var(--nt-editor-bg) !important', borderRight: 'none !important', borderLeft: 'none !important' },
     '.cm-lineNumbers .cm-gutterElement': { paddingLeft: '8px !important', paddingRight: '8px !important', minWidth: '32px !important', textAlign: 'right' },
     '.cm-foldGutter .cm-gutterElement': { paddingLeft: '0px !important', paddingRight: '0px !important', width: '20px !important', textAlign: 'center', cursor: 'pointer' },
     '.cm-scroller': { overflow: 'auto !important', overscrollBehaviorX: 'none !important' },
@@ -38,16 +40,19 @@ export const COMMON_EXTENSIONS: Extension[] = [
     '.custom-fold-marker': { transition: 'opacity 0.2s' },
     '.cm-panels': { zIndex: '10 !important' },
     '.cm-panels-top': { zIndex: '50 !important', borderBottom: 'none !important' },
-    '.cm-stickyscroll-container': { borderBottom: '1px solid var(--border-subtle) !important' },
+    '.cm-stickyscroll-container': {
+      borderBottom: '1px solid var(--nt-editor-border) !important',
+      backgroundColor: 'var(--nt-editor-bg) !important',
+    },
     '.cm-breadcrumbs-segment.cm-breadcrumbs-kind-folder > svg': { display: 'none' }
   }),
   indentationMarkers({
     hideFirstIndent: true,
     colors: {
-      light: 'var(--border-subtle)',
-      dark: 'var(--border-subtle)',
-      activeLight: 'var(--text-muted)',
-      activeDark: 'var(--text-muted)'
+      light: 'var(--nt-editor-border)',
+      dark: 'var(--nt-editor-border)',
+      activeLight: 'var(--nt-editor-gutter-fg)',
+      activeDark: 'var(--nt-editor-gutter-fg)'
     }
   }),
   highlightSpecialChars(),
@@ -67,6 +72,8 @@ export const COMMON_EXTENSIONS: Extension[] = [
   }),
   bracketMatching(),
   closeBrackets(),
+  // Snippet completions come from the snippet registry (data per language).
+  snippetCompletionExtensions(),
   autocompletion(),
   rectangularSelection(),
   crosshairCursor(),

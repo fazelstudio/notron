@@ -1,0 +1,11 @@
+import { kimbie, defaultSettingsKimbie } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "kimbie";
+export const label = "Kimbie";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = kimbie;
+export const settings = defaultSettingsKimbie;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/kimbie.ts" });

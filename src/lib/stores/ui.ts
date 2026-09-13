@@ -1,3 +1,9 @@
+/**
+ * UI
+ *
+ * State store for ui.
+ */
+
 import { writable } from 'svelte/store';
 import {
   DEFAULT_SIDEBAR_WIDTH,

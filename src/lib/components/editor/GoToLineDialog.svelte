@@ -29,7 +29,7 @@
         bind:this={inputEl}
         type="number"
         min="1"
-        class="w-full px-3 py-2 text-sm rounded outline-none border bg-canvas border-subtle text-primary placeholder-muted focus:border-focus"
+        class="w-full px-3 py-2 text-sm rounded outline-none border bg-input border-subtle text-primary placeholder-muted focus:border-focus"
         placeholder="Enter line number..."
         bind:value={lineStr}
         onkeydown={(e) => { if (e.key === 'Enter') handleSubmit(); }}

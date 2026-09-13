@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-gruvbox-dark",
+  "name": "theme-gruvbox-dark",
+  "displayName": "Gruvbox Dark",
+  "description": "Gruvbox Dark theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "gruvbox-dark",
+        "label": "Gruvbox Dark",
+        "uiTheme": "dark",
+        "path": "./themes/gruvbox-dark.ts"
+      }
+    ]
+  }
+}

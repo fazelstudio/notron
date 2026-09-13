@@ -1,0 +1,22 @@
+{
+  "id": "notron.icon-theme-material",
+  "name": "icon-theme-material",
+  "displayName": "Material Icon Theme",
+  "description": "Material icons for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": ["*"],
+  "contributes": {
+    "iconThemes": [
+      {
+        "id": "material",
+        "label": "Material",
+        "path": "./themes/material.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+import { copilot, defaultSettingsCopilot } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "copilot";
+export const label = "Copilot";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = copilot;
+export const settings = defaultSettingsCopilot;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/copilot.ts" });

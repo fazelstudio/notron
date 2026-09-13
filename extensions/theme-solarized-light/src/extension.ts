@@ -1,0 +1,11 @@
+import { solarizedLight, defaultSettingsSolarizedLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "solarized-light";
+export const label = "Solarized Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = solarizedLight;
+export const settings = defaultSettingsSolarizedLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/solarized-light.ts" });

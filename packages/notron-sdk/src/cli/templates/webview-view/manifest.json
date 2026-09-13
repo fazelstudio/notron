@@ -1,0 +1,16 @@
+{
+  "id": "acme.webview-view",
+  "name": "webview-view",
+  "displayName": "Webview View (stub)",
+  "description": "Stub template for webview-view — belum lengkap (Fase 5 stub). Lihat IMPLEMENTATION_LOG.md Fase 5.",
+  "version": "0.1.0",
+  "publisher": "acme",
+  "engines": { "notron": "^0.1.0" },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onView:acme.webviewView"],
+  "contributes": {
+    "viewsContainers": { "activitybar": [{ "id": "acme.webviewContainer", "title": "Webview Demo", "icon": "$(window)" }] },
+    "views": { "acme.webviewContainer": [{ "id": "acme.webviewView", "name": "Demo View", "type": "webview" }] },
+    "commands": [{ "command": "acme.webviewView.show", "title": "Show Webview", "category": "Demo" }]
+  }
+}

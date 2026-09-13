@@ -1,3 +1,9 @@
+/**
+ * Git Repo
+ *
+ * State store for git repo.
+ */
+
 import { writable, get } from 'svelte/store';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -171,7 +177,7 @@ function createGitRepoStore() {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       // React to the Rust watcher's git-status-refresh event with a 400ms
-      // debounce (VSCode-equivalent responsiveness). A gitignore change
+      // debounce (the editor-equivalent responsiveness). A gitignore change
       // alters tracked/untracked membership, so it refreshes immediately.
       listen<{ gitignoreChanged?: boolean }>('git-status-refresh', (e) => {
         if (!_cwd) return;
@@ -338,7 +344,7 @@ function createGitRepoStore() {
       }
     },
 
-    /** VSCode "Publish Branch": push the current branch to a remote and set
+    /** the editor "Publish Branch": push the current branch to a remote and set
      *  its upstream, with real progress + cancel. Resolves when done. */
     async publish() {
       if (!_cwd) return false;

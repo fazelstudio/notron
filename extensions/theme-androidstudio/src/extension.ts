@@ -1,0 +1,11 @@
+import { androidstudio, defaultSettingsAndroidstudio } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "androidstudio";
+export const label = "Android Studio";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = androidstudio;
+export const settings = defaultSettingsAndroidstudio;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/androidstudio.ts" });

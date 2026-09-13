@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-xcode-dark",
+  "name": "theme-xcode-dark",
+  "displayName": "Xcode Dark",
+  "description": "Xcode Dark theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "xcode-dark",
+        "label": "Xcode Dark",
+        "uiTheme": "dark",
+        "path": "./themes/xcode-dark.ts"
+      }
+    ]
+  }
+}

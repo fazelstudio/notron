@@ -1,3 +1,9 @@
+/**
+ * Terminal
+ *
+ * State store for terminal.
+ */
+
 import { writable } from 'svelte/store';
 import {
   DEFAULT_TERMINAL_HEIGHT,
@@ -59,7 +65,7 @@ function clampHeight(height: number): number {
   return Math.max(MIN_TERMINAL_HEIGHT, Math.min(max, height));
 }
 
-/** VSCode-style timestamp: YYYY-MM-DD HH:mm:ss.SSS */
+/** the editor-style timestamp: YYYY-MM-DD HH:mm:ss.SSS */
 function formatLogTimestamp(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, '0')}`;
@@ -69,7 +75,7 @@ function createTerminalStore() {
   const state = writable<TerminalState>({
     terminals: [],
     activeTerminalId: null,
-    isVisible: readStorageFlag(VISIBLE_KEY),
+    isVisible: false,
     isMaximized: readStorageFlag(MAXIMIZED_KEY),
     height: readStorageNumber(HEIGHT_KEY, DEFAULT_TERMINAL_HEIGHT),
     isResizing: false,
@@ -156,6 +162,9 @@ function createTerminalStore() {
         return { ...s, activePanel: panel, isVisible: true };
       });
     },
+    /** Set active panel without changing visibility — used for session restore. */
+    setActivePanelSilently: (panel: BottomPanelName) =>
+      update(() => ({ activePanel: panel })),
     addOutputLog: (log: string, level: string = 'info') =>
       update((s) => {
         const entry = `${formatLogTimestamp(new Date())} [${level}] ${log}`;
@@ -205,10 +214,15 @@ function createTerminalStore() {
     },
     initFromStorage: () => {
       update(() => ({
-        isVisible: readStorageFlag(VISIBLE_KEY),
+        isVisible: false,
         isMaximized: readStorageFlag(MAXIMIZED_KEY),
         height: readStorageNumber(HEIGHT_KEY, DEFAULT_TERMINAL_HEIGHT),
       }));
+    },
+    /** Clear persisted visibility — used to ensure panel does not auto-show from stale storage. */
+    clearVisibilityPersist: () => {
+      try { localStorage.removeItem(VISIBLE_KEY); } catch {}
+      update(() => ({ isVisible: false }));
     },
   };
 }

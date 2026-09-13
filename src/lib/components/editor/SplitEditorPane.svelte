@@ -1,17 +1,23 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import { eventBus } from '../../utils/eventBus';
   import { editorStore } from '../../stores/editor';
   import { splitStore } from '../../stores/split';
   import { terminalStore } from '../../stores/terminal';
   import { settingsStore } from '../../stores/settings.svelte';
+  import { uiStore } from '../../stores/ui';
   import { getGitFileContent } from '../../services/git';
   import { dirname } from '../../utils/path';
-  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
-  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
+  import FileIcon from '../common/FileIcon.svelte';
   import SvgViewToggle from '../common/SvgViewToggle.svelte';
+  import ViewTitleMenu from '../common/ViewTitleMenu.svelte';
   import MarkdownViewToggle from '../common/MarkdownViewToggle.svelte';
+  import { previewRegistry } from '../../workbench/previewRegistry';
+  import { contextMenuRegistry } from '../../workbench/contextMenuRegistry';
+  import { commandRegistry } from '../../commands/registry';
+  import { fileIpc } from '../../platform/ipc';
   import { createCancelableLoader } from '../../utils/cancelableLoader';
   import type { EditorPane } from '../../stores/split';
+  import { portal } from '../../utils/menuPosition';
 
   interface Props {
     paneId: string;
@@ -41,7 +47,11 @@
     WelcomeTabComponent,
   }: Props = $props();
 
+  // Silence unused-variable warnings for callbacks passed through to children.
+  $effect(() => { void onNewTextFile; void onOpenFile; void onOpenTerminal; });
+
   const splitState = splitStore;
+  const ui = uiStore;
 
   let pane = $derived($splitState.panes[paneId] as EditorPane | undefined);
   let tabs = $derived(pane?.tabs ?? []);
@@ -50,19 +60,32 @@
   let isActive = $derived($splitState.activePaneId === paneId);
   let totalPanes = $derived(Object.keys($splitState.panes).length);
 
+  // Prefer editorStore buffer when the split copy is missing/empty — preview
+  // already reads editorStore, and a stale empty split buffer was what made
+  // markdown "code" mode look wiped while preview still rendered.
+  const editorTabs = editorStore.tabs;
+  let resolvedContent = $derived.by(() => {
+    if (!activeTab) return null;
+    const fromSplit = activeTab.content;
+    if (typeof fromSplit === 'string' && fromSplit.length > 0) return fromSplit;
+    const fromEditor = $editorTabs.find((t: any) => t.id === activeTab.id)?.content;
+    if (typeof fromEditor === 'string') return fromEditor;
+    return fromSplit ?? null;
+  });
+
   // Loading tab IDs guard + cancelable loader (ASYNC-003) to discard stale results
   const loadingTabIds = new Set<string>();
   const lazyLoadLoader = createCancelableLoader<any>();
 
-  // Lazy-load content when activeTab changes and content is null
+  // Lazy-load content when activeTab changes and content is null / wiped empty
   $effect(() => {
     if (
       activeTab &&
-      activeTab.content === null &&
       activeTab.path &&
       !activeTab.path.startsWith('Untitled') &&
       !activeTab.isLoading &&
-      !loadingTabIds.has(activeTab.id)
+      !loadingTabIds.has(activeTab.id) &&
+      (activeTab.content === null || (activeTab.content === '' && !!activeTab.isModified))
     ) {
       const tabId = activeTab.id;
       const path = activeTab.path;
@@ -84,7 +107,7 @@
         Promise.all([
           currentRev && currentRev !== 'working-tree'
             ? getGitFileContent(dir, path, currentRev)
-            : invoke<string>('read_file_text', { path }).then(c => c, (err: unknown) => {
+            : fileIpc.readText(path).then((c: string) => c, (err: unknown) => {
                 if (String(err) === '__BINARY__') return '__UNSUPPORTED__';
                 throw err;
               }),
@@ -110,7 +133,7 @@
         // document, so a session-restored large tab rehydrates cheaply.
         lazyLoadLoader.load(async () => {
           try {
-            return await invoke<any>('read_file_chunked', { path });
+            return await fileIpc.readChunked(path);
           } catch (err) {
             console.error('Failed to lazy load large tab:', err);
             return null;
@@ -128,11 +151,11 @@
       } else {
         lazyLoadLoader.load(async () => {
           try {
-            return await invoke<string>('read_file_text', { path });
+            return await fileIpc.readText(path);
           } catch (err) {
             if (String(err) === '__BINARY__') return { __error: 'binary' as const };
             if (String(err) === '__LARGE_FILE__') {
-              const chunked = await invoke<any>('read_file_chunked', { path });
+              const chunked = await fileIpc.readChunked(path);
               return { __error: 'large' as const, content: chunked.content };
             }
             throw err;
@@ -169,6 +192,21 @@
     targetTabId: null as string | null,
     items: [] as any[],
   });
+  let ctxMenuElement = $state<HTMLDivElement>();
+
+  $effect(() => {
+    if (!ctxMenu.isOpen || !ctxMenuElement) return;
+    const frame = requestAnimationFrame(() => {
+      if (!ctxMenuElement) return;
+      const rect = ctxMenuElement.getBoundingClientRect();
+      const gap = 8;
+      const x = Math.max(gap, Math.min(ctxMenu.x, window.innerWidth - rect.width - gap));
+      const y = Math.max(gap, Math.min(ctxMenu.y, window.innerHeight - rect.height - gap));
+      ctxMenuElement.style.left = `${x}px`;
+      ctxMenuElement.style.top = `${y}px`;
+    });
+    return () => cancelAnimationFrame(frame);
+  });
 
   function closeCtxMenu() {
     ctxMenu.isOpen = false;
@@ -189,31 +227,45 @@
         id: 'close',
         label: 'Close Tab',
         shortcut: 'Ctrl+W',
-        action: () => handleTabClose(tabId),
+        command: 'workbench.action.closeActiveEditor',
+        action: () => { void commandRegistry.execute('workbench.action.closeActiveEditor'); },
       },
       {
         id: 'close_other',
+        command: 'workbench.action.closeOtherEditors',
         label: 'Close Other',
         disabled: tabs.length <= 1,
-        action: () => {
-          tabs.forEach(t => { if (t.id !== tabId) handleTabClose(t.id); });
-        },
+        action: () => { void commandRegistry.execute('workbench.action.closeOtherEditors'); },
       },
       {
         id: 'close_right',
+        command: 'workbench.action.closeEditorsToTheRight',
         label: 'Close to the Right',
         disabled: tabIndex === -1 || tabIndex === tabs.length - 1,
-        action: () => {
-          for (let i = tabIndex + 1; i < tabs.length; i++) handleTabClose(tabs[i].id);
-        },
+        action: () => { void commandRegistry.execute('workbench.action.closeEditorsToTheRight'); },
       },
       { separator: true },
       {
         id: 'copy_path',
+        command: 'explorer.copyPath',
         label: 'Copy Path',
         action: () => navigator.clipboard.writeText(tab.path).catch(console.error),
       },
     ];
+    // Append registry contributions for tab context
+    try {
+      const extra = contextMenuRegistry.getForContext('tab/context');
+      const existing = new Set(ctxMenu.items.map((i: any) => i.id));
+      for (const item of extra) {
+        if (existing.has(item.id) || existing.has(item.command ?? '')) continue;
+        ctxMenu.items.push({
+          id: item.id,
+          label: item.label,
+          command: item.command,
+          action: () => { if (item.command && commandRegistry.has(item.command)) commandRegistry.execute(item.command); }
+        });
+      }
+    } catch {}
     ctxMenu.x = e.clientX;
     ctxMenu.y = e.clientY;
     ctxMenu.isOpen = true;
@@ -232,57 +284,87 @@
         id: 'new_text_file',
         label: 'New Text File',
         shortcut: 'Ctrl+N',
-        action: () => { splitStore.setActivePane(paneId); onNewTextFile?.(); },
+        command: 'workbench.action.files.newUntitledFile',
+        action: () => { splitStore.setActivePane(paneId); void commandRegistry.execute('workbench.action.files.newUntitledFile'); },
       },
       {
         id: 'open_file',
         label: 'Open File',
         shortcut: 'Ctrl+O',
-        action: () => { splitStore.setActivePane(paneId); onOpenFile?.(); },
+        command: 'workbench.action.files.openFile',
+        action: () => { splitStore.setActivePane(paneId); void commandRegistry.execute('workbench.action.files.openFile'); },
       },
       { separator: true },
       {
         id: 'split_up',
         label: 'Split Up',
-        action: () => splitStore.splitPane(paneId, 'up'),
+        command: 'workbench.action.splitEditorUp',
+        action: () => { void commandRegistry.execute('workbench.action.splitEditorUp'); },
       },
       {
         id: 'split_down',
         label: 'Split Down',
-        action: () => splitStore.splitPane(paneId, 'down'),
+        command: 'workbench.action.splitEditorDown',
+        action: () => { void commandRegistry.execute('workbench.action.splitEditorDown'); },
       },
       {
         id: 'split_left',
         label: 'Split Left',
-        action: () => splitStore.splitPane(paneId, 'left'),
+        command: 'workbench.action.splitEditorLeft',
+        action: () => { void commandRegistry.execute('workbench.action.splitEditorLeft'); },
       },
       {
         id: 'split_right',
         label: 'Split Right',
-        action: () => splitStore.splitPane(paneId, 'right'),
+        command: 'workbench.action.splitEditorRight',
+        action: () => { void commandRegistry.execute('workbench.action.splitEditorRight'); },
       },
       { separator: true },
       {
         id: 'terminal',
         label: hasTerminal ? 'Open Terminal' : 'New Terminal',
-        action: () => onOpenTerminal?.(),
+        command: 'workbench.action.terminal.toggleTerminal',
+        action: () => { void commandRegistry.execute('workbench.action.terminal.toggleTerminal'); },
       },
       {
         id: 'new_window',
         label: 'New Window',
-        action: () => invoke('new_window').catch(console.error),
+        command: 'window.newWindow',
+        action: () => { void commandRegistry.execute('window.newWindow'); },
       },
     ];
+    // Append registry contributions for pane context
+    try {
+      const extra = contextMenuRegistry.getForContext('pane/context');
+      const existing = new Set(ctxMenu.items.map((i: any) => i.id));
+      for (const item of extra) {
+        if (existing.has(item.id) || existing.has(item.command ?? '')) continue;
+        ctxMenu.items.push({
+          id: item.id,
+          label: item.label,
+          command: item.command,
+          action: () => { if (item.command && commandRegistry.has(item.command)) commandRegistry.execute(item.command); }
+        });
+      }
+    } catch {}
     ctxMenu.x = e.clientX;
     ctxMenu.y = e.clientY;
     ctxMenu.isOpen = true;
   }
 
   function handleTabClose(tabId: string) {
+    // Route through command registry when possible; fallback to direct for unsaved check
+    if (commandRegistry.has('workbench.action.closeActiveEditor')) {
+      // The command closes the active tab; for a specific tab we set it active first via store then execute
+      const isActiveTab = activeTabId === tabId;
+      if (!isActiveTab) splitStore.setActivePaneTab(paneId, tabId);
+      void commandRegistry.execute('workbench.action.closeActiveEditor');
+      return;
+    }
     const tab = tabs.find(t => t.id === tabId);
     if (!tab) return;
     if (tab.isModified || (tab.path.startsWith('Untitled') && tab.content && tab.content.trim() !== '')) {
-      window.dispatchEvent(new CustomEvent('split:request-close-tab', { detail: { tabId, paneId } }));
+      eventBus.emit('split:request-close-tab', { tabId });
     } else {
       splitStore.closeTabInPane(paneId, tabId);
       editorStore.closeTab(tabId);
@@ -309,22 +391,13 @@
     if (cmdOrCtrl && key === 'w') {
       e.preventDefault();
       e.stopPropagation();
-      if (activeTabId) {
-        handleTabClose(activeTabId);
-        // If no tabs left after close, close the pane (if > 1 pane exists)
+      void commandRegistry.execute('workbench.action.closeActiveEditor').then(() => {
         const paneAfter = splitStore.getSnapshot().panes[paneId];
         if (paneAfter && paneAfter.tabs.length === 0) {
           const allPaneIds = splitStore.collectPaneIds();
-          if (allPaneIds.length > 1) {
-            splitStore.closePane(paneId);
-          }
+          if (allPaneIds.length > 1) splitStore.closePane(paneId);
         }
-      } else {
-        const allPaneIds = splitStore.collectPaneIds();
-        if (allPaneIds.length > 1) {
-          splitStore.closePane(paneId);
-        }
-      }
+      });
     }
   }
 
@@ -337,7 +410,10 @@
   );
 
   $effect(() => {
-    const handler = () => closeCtxMenu();
+    const handler = (event: Event) => {
+      if ((event.target as Element)?.closest('[data-notron-context-menu]')) return;
+      closeCtxMenu();
+    };
     window.addEventListener('close-context-menus', handler);
     window.addEventListener('click', handler, { capture: true });
     return () => {
@@ -360,11 +436,13 @@
 >
   <!-- Tab Bar -->
   {#if tabs.length > 0}
-  <div class="pane-tabs flex h-9 shrink-0 bg-surface-2 border-b border-subtle relative" oncontextmenu={handleEmptyAreaContextMenu}>
-    <!-- Close Pane Button (top-right) -->
+  <div class="pane-tabs flex h-9 shrink-0 bg-[var(--nt-tabbar-bg)] relative" class:border-b={!$ui.isBreadcrumbsEnabled} class:border-[var(--nt-tab-border)]={!$ui.isBreadcrumbsEnabled} oncontextmenu={handleEmptyAreaContextMenu}>
+    <!-- Editor title actions (top-right): registry-driven menu + close pane -->
+    <div class="absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center gap-0.5">
+      <ViewTitleMenu menuId="editor/title" />
     {#if totalPanes > 1}
     <button
-      class="pane-close-btn absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center w-5 h-5 rounded text-icon-default hover:text-icon-active hover:bg-hover transition-colors"
+        class="pane-close-btn flex items-center justify-center w-5 h-5 rounded text-icon-default hover:text-icon-active hover:bg-hover transition-colors"
       onclick={(e) => { e.stopPropagation(); handleClosePane(); }}
       title="Close Pane"
     >
@@ -373,20 +451,21 @@
       </svg>
     </button>
     {/if}
+    </div>
 
     <!-- Tabs List -->
-    <div role="tablist" tabindex="-1" class="flex flex-1 overflow-x-auto scrollbar-hide pr-6" oncontextmenu={handleEmptyAreaContextMenu}>
+    <div role="tablist" tabindex="-1" class="flex flex-1 overflow-x-auto scrollbar-hide pr-14" oncontextmenu={handleEmptyAreaContextMenu}>
       {#each tabs as tab (tab.id)}
         <!-- svelte-ignore a11y_interactive_supports_focus -->
         <div
           role="tab"
           tabindex="0"
-          class="flex shrink-0 items-center gap-2 px-3 min-w-28 cursor-pointer border-t border-l border-r border-subtle -ml-px first:ml-0"
-          class:bg-canvas={activeTabId === tab.id}
+          class="flex shrink-0 items-center gap-2 px-3 min-w-28 cursor-pointer border-t border-l border-r -ml-px first:ml-0 border-[var(--nt-tab-border)]"
+          class:bg-[var(--nt-tab-active-bg)]={activeTabId === tab.id}
           class:text-primary={activeTabId === tab.id}
           class:border-t-2={activeTabId === tab.id}
-          class:border-t-indicator-active={activeTabId === tab.id}
-          class:bg-surface-2={activeTabId !== tab.id}
+          class:border-t-[var(--nt-tab-active-border)]={activeTabId === tab.id}
+          class:bg-[var(--nt-tab-inactive-bg)]={activeTabId !== tab.id}
           class:text-secondary={activeTabId !== tab.id}
           class:hover:bg-hover={activeTabId !== tab.id}
           class:hover:text-primary={activeTabId !== tab.id}
@@ -406,14 +485,8 @@
           {:else if tab.language === 'markdown-preview'}
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-icon-default"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
           {:else}
-            {@const iconTheme = settingsStore.effectiveSettings.icon_theme}
             {@const baseName = tab.path ? tab.path.split(/[/\\]/).pop() || tab.name : tab.name}
-            {#if !iconTheme || iconTheme === 'default'}
-              {@const Icon = getFileIcon(baseName)}
-              <Icon size={14} class="shrink-0 text-icon-default" />
-            {:else if iconTheme === 'material'}
-              <MaterialIcon name={baseName} size={14} />
-            {/if}
+            <FileIcon name={baseName} size={14} iconClass="shrink-0 text-icon-default" />
           {/if}
 
           <span class="text-xs whitespace-nowrap" class:italic={tab.isPreview}>
@@ -490,13 +563,14 @@
     {:else if activeTab}
       {#if activeTab.language === 'markdown-preview' && MarkdownPreviewComponent}
         <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
-      {:else if !activeTab.noPreview && (activeTab.path.toLowerCase().endsWith('.svg') || activeTab.path.toLowerCase().endsWith('.md') || activeTab.language === 'markdown')}
-        {@const isMd = activeTab.path.toLowerCase().endsWith('.md') || activeTab.language === 'markdown'}
-        {@const viewMode = isMd ? (activeTab.mdViewMode || settingsStore.effectiveSettings.default_md_view || 'preview') : (activeTab.svgViewMode || settingsStore.effectiveSettings.default_svg_view || 'image')}
+      {:else if !activeTab.noPreview && previewRegistry.getForFile(activeTab.path, activeTab.language)}
+        {@const preview = previewRegistry.getForFile(activeTab.path, activeTab.language)}
+        {@const isMd = preview?.id === 'markdown'}
+        {@const viewMode = preview ? (preview.getMode(activeTab) || (isMd ? settingsStore.effectiveSettings.default_md_view : (preview.id === 'svg' ? settingsStore.effectiveSettings.default_svg_view : preview.defaultMode)) || preview.defaultMode) : 'preview'}
+        {@const paneContent = resolvedContent}
         
-        {#if EditorComponent && activeTab.content !== null}
-          {#key activeTab.id}
-            <EditorComponent tabId={activeTab.id} content={activeTab.content} filePath={activeTab.path} hideContent={true} isHeaderOnly={true}>
+        {#if EditorComponent}
+          <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} hideContent={true} isHeaderOnly={true}>
               {#snippet topRightOverlay()}
                 {#if isMd}
                   <MarkdownViewToggle {activeTab} />
@@ -506,7 +580,7 @@
               {/snippet}
 
               {#if viewMode === 'image' || viewMode === 'preview'}
-                <div class="absolute inset-0 bg-canvas" oncontextmenu={(e) => e.stopPropagation()}>
+                <div class="absolute inset-0 bg-editor" oncontextmenu={(e) => e.stopPropagation()}>
                   {#if isMd && MarkdownPreviewComponent}
                     <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
                   {:else if !isMd && ImageViewerComponent}
@@ -514,14 +588,14 @@
                   {/if}
                 </div>
               {:else if viewMode === 'code'}
-                <div class="absolute inset-0 [&_.cm-panels-top]:!hidden bg-canvas">
-                  <EditorComponent tabId={activeTab.id} content={activeTab.content} filePath={activeTab.path} />
+                <div class="absolute inset-0 [&_.cm-panels-top]:!hidden bg-editor">
+                  <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} />
                 </div>
               {:else if viewMode === 'split'}
-                <div class="absolute inset-0 flex h-full w-full bg-canvas">
+                <div class="absolute inset-0 flex h-full w-full bg-editor">
                   {#if isMd}
                     <div class="flex-1 flex overflow-hidden relative border-r border-border [&_.cm-panels-top]:!hidden">
-                      <EditorComponent tabId={activeTab.id} content={activeTab.content} filePath={activeTab.path} />
+                      <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} />
                     </div>
                     <div class="flex-1 flex overflow-hidden relative">
                       {#if MarkdownPreviewComponent}
@@ -539,15 +613,32 @@
                       {/if}
                     </div>
                     <div class="flex-1 flex overflow-hidden relative [&_.cm-panels-top]:!hidden">
-                      <EditorComponent tabId={activeTab.id} content={activeTab.content} filePath={activeTab.path} />
+                      <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} />
                     </div>
                   {/if}
                 </div>
               {/if}
             </EditorComponent>
-          {/key}
+        {:else if viewMode === 'preview' || viewMode === 'image'}
+          <!-- Preview can render before the Editor chunk finishes lazy-loading -->
+          <div class="absolute inset-0 bg-editor flex flex-col">
+            <div class="flex items-center justify-end px-2 h-8 shrink-0">
+              {#if isMd}
+                <MarkdownViewToggle {activeTab} />
+              {:else}
+                <SvgViewToggle {activeTab} />
+              {/if}
+            </div>
+            <div class="flex-1 relative overflow-hidden" oncontextmenu={(e) => e.stopPropagation()}>
+              {#if isMd && MarkdownPreviewComponent}
+                <MarkdownPreviewComponent key={activeTab.id} path={activeTab.path} />
+              {:else if !isMd && ImageViewerComponent}
+                <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
+              {/if}
+            </div>
+          </div>
         {:else}
-          <div class="absolute inset-0 bg-canvas flex flex-col">
+          <div class="absolute inset-0 bg-editor flex flex-col">
             <div class="flex items-center justify-end px-2 h-8 shrink-0">
               {#if isMd}
                 <MarkdownViewToggle {activeTab} />
@@ -567,20 +658,30 @@
           currentRevision={activeTab.diffCurrentRevision} 
         />
       {:else if activeTab.language === 'image' && ImageViewerComponent}
-        <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
+        {#if EditorComponent}
+          <EditorComponent
+            tabId={activeTab.id}
+            content={resolvedContent ?? ''}
+            filePath={activeTab.path}
+            hideContent={true}
+            isHeaderOnly={true}
+          >
+            <div class="absolute inset-0 bg-editor" oncontextmenu={(e) => e.stopPropagation()}>
+              <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
+            </div>
+          </EditorComponent>
+        {:else}
+          <ImageViewerComponent key={activeTab.id} filePath={activeTab.path} gitRevision={activeTab.gitRevision} />
+        {/if}
       {:else if activeTab.language === 'welcome' && WelcomeTabComponent}
         <WelcomeTabComponent />
       {:else if activeTab.language === 'settings' && SettingsPageComponent}
         <SettingsPageComponent />
-      {:else if activeTab.isLoading}
-        <div class="absolute inset-0 bg-canvas"></div>
       {:else if activeTab.isUnsupported}
-        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted bg-canvas select-none">
+        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted bg-editor select-none">
           <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="opacity-50"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
           <span class="text-sm">Binary or unsupported file encoding.</span>
         </div>
-      {:else if activeTab.content === null}
-        <div class="absolute inset-0 bg-canvas"></div>
       {:else if activeTab.isDiff && DiffEditorComponent}
         {#key activeTab.id}
           <DiffEditorComponent
@@ -594,11 +695,14 @@
           />
         {/key}
       {:else if !activeTab.isDiff && EditorComponent}
-        {#key activeTab.id}
-          <EditorComponent tabId={activeTab.id} content={activeTab.content} filePath={activeTab.path} readOnly={activeTab.readOnly} />
-        {/key}
+        <EditorComponent
+          tabId={activeTab.id}
+          content={activeTab.content ?? ''}
+          filePath={activeTab.path}
+          readOnly={activeTab.readOnly || activeTab.isLoading}
+        />
       {:else}
-        <div class="absolute inset-0 bg-canvas"></div>
+        <div class="absolute inset-0 bg-editor"></div>
       {/if}
     {/if}
   </div>
@@ -607,8 +711,10 @@
 <!-- Tab Context Menu (pane-local) -->
 {#if ctxMenu.isOpen}
   <div
+    bind:this={ctxMenuElement}
+    use:portal
     data-notron-context-menu="true"
-    class="fixed min-w-[180px] rounded-md border p-1 shadow-elevated z-[100] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary"
+    class="fixed min-w-[180px] rounded-md border p-1 shadow-elevated z-[2147483646] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary"
     style="left: {ctxMenu.x}px; top: {ctxMenu.y}px;"
     role="presentation"
     onclick={(e) => e.stopPropagation()}
@@ -638,12 +744,10 @@
     outline: none;
   }
   .pane-active .pane-tabs {
-    border-bottom-color: var(--color-indicator-active, #007acc);
-    border-bottom-width: 1px;
-    box-shadow: inset 0 -1px 0 var(--color-indicator-active, #007acc);
+    border-bottom-color: var(--nt-tab-active-border);
   }
   .pane-active {
-    box-shadow: inset 0 0 0 1px rgba(0, 122, 204, 0.35);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
   }
   .pane-close-btn {
     opacity: 0;

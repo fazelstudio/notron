@@ -1,3 +1,9 @@
+/**
+ * Git
+ *
+ * Service for git.
+ */
+
 import { Channel, invoke } from '@tauri-apps/api/core';
 
 // Types mirror src-tauri/src/git_service.rs
@@ -189,7 +195,7 @@ export async function push(cwd: string): Promise<void> {
   await invoke('git_push', { cwd });
 }
 
-/** VSCode "Publish Branch": push the current branch and set its upstream. */
+/** the editor "Publish Branch": push the current branch and set its upstream. */
 export function publishBranch(
   cwd: string,
   opId: string | null,

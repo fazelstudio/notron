@@ -1,0 +1,11 @@
+import { monokai, defaultSettingsMonokai } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "monokai";
+export const label = "Monokai";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = monokai;
+export const settings = defaultSettingsMonokai;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/monokai.ts" });

@@ -11,24 +11,29 @@
   import { notronBreadcrumbsTheme, syncBreadcrumbBarIcons, ensureBreadcrumbObserver, disposeBreadcrumbObserver } from '../../editor/breadcrumbs';
   import { COMMON_EXTENSIONS, COMMON_EXTENSIONS_LARGE_FILE } from '../../editor/commonExtensions';
   import { searchResultHighlightExtensions, setSearchResultHighlight, clearSearchResultHighlight } from '../../editor/searchResultHighlight';
-  import { materialIconState } from '../../extensions/material-icons/iconRenderer.svelte';
+  import { materialIconState } from '../../../../extensions/icon-theme-material/src/iconRenderer.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
   import HorizontalScrollbar from '../common/HorizontalScrollbar.svelte';
   import EditorSearchWidget from './EditorSearchWidget.svelte';
   import EditorFoldMarker from '../common/EditorFoldMarker.svelte';
   import GitGutterPeekButton from '../common/GitGutterPeekButton.svelte';
   import ContextMenu, { type MenuItem } from '../common/ContextMenu.svelte';
-  import { getThemeExtension } from '../../themes/index';
+  import { getThemeExtension } from '../../theme/registry';
+  import { ntEditorOverride } from '../../theme/cm6-theme';
   import { showMinimap } from '@replit/codemirror-minimap';
-  import { invoke } from '@tauri-apps/api/core';
+  import { overviewRuler, overviewRulerMarkers } from '@fazelstudio/codemirror-overview-ruler';
   import { editorStore } from '../../stores/editor';
   import { buildReplaceRegex, applyReplacement } from '../../utils/replace';
   import { uiStore } from '../../stores/ui';
   import { themeStore } from '../../stores/theme';
   import { getGitFileContent, stageFile } from '../../services/git';
-  import { renderBreadcrumbPathIcon } from '../../extensions/material-icons/breadcrumbPathIcons';
+  import { renderBreadcrumbPathIcon } from '../../../../extensions/icon-theme-material/src/breadcrumbPathIcons';
   import { LARGE_FILE_THRESHOLD_BYTES, SEARCH_RESULT_HIGHLIGHT_MS, MINIMAP_WIDTH, EDITOR_SCROLLBAR_WIDTH } from '../../constants';
-  import { isRunnableFile } from '../../utils/runTargets';
+  import { editorExtensionRegistry } from '../../editor/extensionRegistry';
+  import { contextMenuRegistry } from '../../workbench/contextMenuRegistry';
+  import { eventBus } from '../../utils/eventBus';
+  // Ensure editor extensions are registered via the central registry (modular)
+  void editorExtensionRegistry;
 
   let { tabId, content, filePath, children, topRightOverlay, hideContent = false, isHeaderOnly = false, readOnly = false }: { tabId: string; content: string; filePath: string; children?: Snippet; topRightOverlay?: Snippet; hideContent?: boolean; isHeaderOnly?: boolean; readOnly?: boolean } = $props();
 
@@ -153,6 +158,7 @@
   const gitGutterCompartment = new Compartment();
   const breadcrumbsCompartment = new Compartment();
   const stickyScrollCompartment = new Compartment();
+  const overviewRulerCompartment = new Compartment();
   const readOnlyCompartment = new Compartment();
 
   /** Builds the mini-map extensions, or an empty array when no mini-map is wanted. */
@@ -196,7 +202,7 @@
 
             // FORCE it out of the scroller to guarantee it sits on top of text.
             // The plugin inserts the container into the scroller synchronously
-            // AFTER this create() returns, so the move must happen after that —
+            // AFTER this create() returns, so the move must happen after that
             // a microtask does it before the next paint, so the minimap is in
             // its final position immediately (no visible "slide in" on open;
             // the old 50ms setTimeout showed it sitting in the scroller first).
@@ -233,7 +239,7 @@
   }
 
   function readBreadcrumbDirectory(dir: string) {
-    return invoke<any>('read_directory_flat', { path: dir, showDotFiles: false }).then(
+    return import('../../platform/ipc').then(({ fileIpc }) => fileIpc.readDirectoryFlat(dir, false)).then(
       (node) =>
         (node || []).map((item: any) => ({
           name: item.name,
@@ -275,7 +281,7 @@
   function syncStickyScrollOffset() {
     if (!editorView) return;
 
-    // ── Content right inset (text wrap edge + active-line band) ──
+ // Content right inset (text wrap edge + active-line band)
     // Measure the minimap's true geometry. Runs even when the sticky bar is
     // absent, so content alignment never depends on the sticky setting.
     const minimap = editorView.dom.querySelector<HTMLElement>('.cm-minimap-container');
@@ -313,7 +319,7 @@
   }
 
   function openFileFromBreadcrumbs(path: string) {
-    window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path } }));
+    eventBus.emit('request-open-file', { path });
   }
 
   function setupEditor() {
@@ -380,10 +386,35 @@
         }, 500);
       }
     });
+    // Bridge for git gutter to overview ruler.
+    const gitRulerBridge = overviewRulerMarkers.compute([hunksField], (state) => {
+      const hunks = state.field(hunksField, false) ?? [];
+      const doc = state.doc;
+      const markers: any[] = [];
+      
+      for (const hunk of hunks) {
+        try {
+          // hunk.fromB and toB are line numbers in the current document.
+          const fromLine = doc.line(Math.max(1, Math.min(hunk.fromB, doc.lines)));
+          const toLine = doc.line(Math.max(1, Math.min(hunk.toB, doc.lines)));
+          
+          let type = 'info';
+          if (hunk.type === 'added') type = 'info'; // New line
+          if (hunk.type === 'modified') type = 'warning'; // Modified line
+          if (hunk.type === 'deleted') type = 'error'; // Deleted line
+          
+          markers.push({ from: fromLine.from, to: toLine.to, type });
+        } catch (e) {
+          // Ignore out-of-range lines.
+        }
+      }
+      return markers;
+    });
+
 
     let extBase = [
       ...(isLargeFile ? COMMON_EXTENSIONS_LARGE_FILE : COMMON_EXTENSIONS),
-      stickyScrollCompartment.of(!isLargeFile && !filePath.toLowerCase().endsWith('.svg') && $ui.isStickyScrollEnabled ? stickyScroll() : []),
+      stickyScrollCompartment.of(!isHeaderOnly && !isLargeFile && !filePath.toLowerCase().endsWith('.svg') && $ui.isStickyScrollEnabled ? stickyScroll() : []),
       breadcrumbsCompartment.of($ui.isBreadcrumbsEnabled ? breadcrumbs({
         filePath,
         workspaceRoot: $ui.explorerRoot || undefined,
@@ -414,7 +445,7 @@
       peekTooltipPlugin,
       updateListener,
       langCompartment.of([]),
-      themeCompartment.of(getThemeExtension($themeStore.theme, isDark)),
+      themeCompartment.of([getThemeExtension($themeStore.theme, isDark), ntEditorOverride]),
       gutterCompartment.of([lintGutter()]),
       lineNumbersCompartment.of(settings.effectiveSettings.line_numbers ? [
         lineNumbers(), 
@@ -430,7 +461,11 @@
       ]),
       wordWrapCompartment.of(settings.effectiveSettings.word_wrap ? EditorView.lineWrapping : []),
       tabSizeCompartment.of(EditorState.tabSize.of(settings.effectiveSettings.tab_size)),
-      minimapCompartment.of(!isLargeFile && $ui.isMinimapEnabled ? minimapExtension() : []),
+      overviewRulerCompartment.of([
+        overviewRuler({ position: 'right', width: 10 }),
+        gitRulerBridge
+      ]),
+      minimapCompartment.of(!isHeaderOnly && !isLargeFile && $ui.isMinimapEnabled ? minimapExtension() : []),
       readOnlyCompartment.of(EditorState.readOnly.of(readOnly)),
       searchResultHighlightExtensions(),
     ];
@@ -438,19 +473,27 @@
     let state = editorStates.get(tabId);
     if (!state) {
         const tabData = editorStore.getTabsSnapshot().find(t => t.id === tabId);
+        // Prefer a non-empty store buffer over a stale/empty prop — nested
+        // markdown editors can mount with a briefly empty split-store copy.
+        const initialDoc =
+          (typeof content === 'string' && content.length > 0)
+            ? content
+            : (typeof tabData?.content === 'string' && tabData.content.length > 0)
+              ? tabData.content
+              : (content || '');
         if (tabData && tabData.undoHistory && !isLargeFile) {
           try {
             state = EditorState.fromJSON(
-              { doc: content || '', history: tabData.undoHistory },
+              { doc: initialDoc, history: tabData.undoHistory },
               { extensions: extBase },
               { history: historyField }
             );
           } catch (e) {
             console.warn('Failed to restore history', e);
-            state = EditorState.create({ doc: content || '', extensions: extBase });
+            state = EditorState.create({ doc: initialDoc, extensions: extBase });
           }
         } else {
-          state = EditorState.create({ doc: content || '', extensions: extBase });
+          state = EditorState.create({ doc: initialDoc, extensions: extBase });
         }
         editorStates.set(tabId, state);
     }
@@ -497,7 +540,7 @@
     const dark = isDark;
     if (!editorView) return;
     editorView.dispatch({
-      effects: themeCompartment.reconfigure(getThemeExtension(themeId, dark))
+      effects: themeCompartment.reconfigure([getThemeExtension(themeId, dark), ntEditorOverride])
     });
     syncStickyScrollOffset();
   });
@@ -539,7 +582,7 @@
     // compartment — merely flipping `style.display` does nothing when the
     // editor was mounted with the minimap disabled (the compartment is empty).
     if (!editorView) return;
-    const enabled = !isLargeFile && $ui.isMinimapEnabled;
+    const enabled = !isHeaderOnly && !isLargeFile && $ui.isMinimapEnabled;
     editorView.dispatch({
       effects: minimapCompartment.reconfigure(enabled ? minimapExtension() : []),
     });
@@ -580,7 +623,7 @@
   });
 
   $effect(() => {
-    const enabled = !isLargeFile && !filePath.toLowerCase().endsWith('.svg') && $ui.isStickyScrollEnabled;
+    const enabled = !isHeaderOnly && !isLargeFile && !filePath.toLowerCase().endsWith('.svg') && $ui.isStickyScrollEnabled;
     if (!editorView) return;
     editorView.dispatch({
       effects: stickyScrollCompartment.reconfigure(enabled ? stickyScroll() : []),
@@ -698,9 +741,7 @@
       const { gotoDefinition } = await import('../../utils/symbolEngine');
       const results = await gotoDefinition($ui.explorerRoot, symbol, filePath);
       if (results.length > 0) {
-        window.dispatchEvent(new CustomEvent('editor:open-file', {
-          detail: { path: results[0].file_path, line: results[0].line }
-        }));
+        eventBus.emit('request-open-file', { path: results[0].file_path, line: results[0].line });
       }
     } catch (err) { console.error('Go to definition failed', err); }
   }
@@ -837,11 +878,25 @@
     setupEditor();
     window.addEventListener('editor:action', handleAction);
     window.addEventListener('editor:append-chunk', handleAppendChunk);
-    window.addEventListener('editor:sync-content', handleSyncContent);
+    // Header-only shells share the same tabId as the nested code editor; if
+    // they also listened for sync-content they could race and blank the buffer.
+    if (!isHeaderOnly) {
+      window.addEventListener('editor:sync-content', handleSyncContent);
+    }
+  });
+
+  // Keep one CodeMirror view alive while the pane switches tabs. The tab's
+  // state is swapped in place, so breadcrumbs, gutters and scroll chrome do
+  // not disappear and re-mount between editor selections.
+  $effect(() => {
+    tabId;
+    if (editorView && tabId !== currentTabId) {
+      setupEditor();
+    }
   });
 
   /**
-   * External content sync (disk watcher reload, file re-open). Applies a
+ * content sync (disk watcher reload, file re-open). Applies a
    * freshly-read file content to the LIVE CodeMirror buffer without tearing
    * down the view. The event fires BEFORE the store update (see
    * editorStore.setInitialContent) so we can compare against the pre-update
@@ -849,7 +904,7 @@
    * the extraction debounce window and we must NOT clobber their edits.
    */
   function handleSyncContent(e: any) {
-    if (!editorView) return;
+    if (!editorView || isHeaderOnly) return;
     const { tabId: tId, content: newContent } = e.detail ?? {};
     if (tId !== currentTabId || typeof newContent !== 'string') return;
     if (editorView.state.doc.toString() === newContent) return;
@@ -896,12 +951,6 @@
       }
   }
   
-  (() => {
-      if (tabId && tabId !== currentTabId && editorView) {
-          setupEditor();
-      }
-  });
-
   onDestroy(() => {
     if (pendingHighlightTimer) {
       clearTimeout(pendingHighlightTimer);
@@ -913,7 +962,9 @@
     observedMinimapEl = null;
     window.removeEventListener('editor:action', handleAction);
     window.removeEventListener('editor:append-chunk', handleAppendChunk);
-    window.removeEventListener('editor:sync-content', handleSyncContent);
+    if (!isHeaderOnly) {
+      window.removeEventListener('editor:sync-content', handleSyncContent);
+    }
     if (editorView) {
       if (!isHeaderOnly) {
         // Save the LIVE editor state for the current tab first — the Map may be
@@ -939,8 +990,20 @@
         }
         // Sync content only for the current tab — other tabs' content is kept
         // up-to-date by the debounced contentExtractTimer during editing.
+        // Never push an empty doc over a non-empty store buffer: that is what
+        // wiped PRD.md (and other markdown) when switching preview → code →
+        // preview with a still-loading or briefly-empty CodeMirror instance.
         if (currentTabId) {
-          editorStore.updateContent(currentTabId, editorView.state.doc.toString());
+          const docContent = editorView.state.doc.toString();
+          const storeTab = editorStore.getTabsSnapshot().find(tb => tb.id === currentTabId);
+          const storeContent = storeTab?.content;
+          const wouldWipe =
+            docContent.length === 0 &&
+            typeof storeContent === 'string' &&
+            storeContent.length > 0;
+          if (!wouldWipe) {
+            editorStore.updateContent(currentTabId, docContent);
+          }
             const pos = editorView.state.selection.main.head;
             const line = editorView.state.doc.lineAt(pos);
             editorStore.updateCursor(currentTabId, line.number, pos - line.from + 1);
@@ -957,89 +1020,12 @@
     foldMarkers.clear();
   });
 
-  let canRunCurrentFile = $derived(
-    !!currentTab?.path &&
-    !currentTab.path.startsWith('Untitled') &&
-    currentTab.language !== 'welcome' &&
-    isRunnableFile(currentTab.path)
-  );
-
-  let editorContextMenuItems: MenuItem[] = $derived([
-    {
-      id: 'run-code',
-      label: 'Run Code',
-      shortcut: 'Ctrl+F5',
-      action: () => { import('../../services/runService').then(m => m.runCurrentFile()); },
-      disabled: !canRunCurrentFile
-    },
-    { id: 'sep-run', label: '', action: () => {}, separator: true },
-    {
-      id: 'goto-definition',
-      label: 'Go to Definition',
-      shortcut: 'F12',
-      action: () => handleGoToDefinition(),
-      disabled: isLargeFile || currentTab?.language === 'plaintext'
-    },
-    {
-      id: 'goto-type-definition',
-      label: 'Go to Type Definition',
-      action: () => { /* Not yet natively supported by backend symbol engine */ },
-      disabled: true
-    },
-    {
-      id: 'goto-implementations',
-      label: 'Go to Implementations',
-      action: () => { /* Not yet natively supported by backend symbol engine */ },
-      disabled: true
-    },
-    {
-      id: 'find-references',
-      label: 'Find All References',
-      shortcut: 'Shift+F12',
-      action: () => handleFindReferences(),
-      disabled: isLargeFile || currentTab?.language === 'plaintext'
-    },
-    {
-      id: 'find-implementations',
-      label: 'Find All Implementations',
-      action: () => { /* Not yet natively supported by backend symbol engine */ },
-      disabled: true
-    },
-    {
-      id: 'show-call-hierarchy',
-      label: 'Show Call Hierarchy',
-      action: () => { /* Not yet natively supported by backend symbol engine */ },
-      disabled: true
-    },
-    { id: 'sep1', label: '', action: () => {}, separator: true },
-    {
-      id: 'cut',
-      label: 'Cut',
-      shortcut: 'Ctrl+X',
-      action: () => document.execCommand('cut')
-    },
-    {
-      id: 'copy',
-      label: 'Copy',
-      shortcut: 'Ctrl+C',
-      action: () => document.execCommand('copy')
-    },
-    {
-      id: 'paste',
-      label: 'Paste',
-      shortcut: 'Ctrl+V',
-      action: () => document.execCommand('paste')
-    },
-    { id: 'sep2', label: '', action: () => {}, separator: true },
-    {
-      id: 'command-palette',
-      label: 'Command Palette',
-      shortcut: 'Ctrl+Shift+P',
-      action: () => {
-        window.dispatchEvent(new CustomEvent('open-command-palette'));
-      }
-    }
-  ]);
+  // Editor context menu is registry-driven (contrib/editor/contribution.ts).
+  // `currentTab` is read so disabled predicates re-evaluate on tab switch.
+  let editorContextMenuItems: MenuItem[] = $derived.by(() => {
+    void currentTab?.id;
+    return contextMenuRegistry.getMenuItems('editor/context') as MenuItem[];
+  });
 </script>
 
 <ContextMenu items={editorContextMenuItems}>
@@ -1061,17 +1047,18 @@
       <button class="px-3 py-1 rounded cursor-pointer" style="background-color: color-mix(in srgb, var(--color-warning) 50%, transparent);" onclick={() => editorStore.markSaved(tabId)}>Ignore</button>
       <button class="bg-surface-3 hover:bg-surface-4 px-3 py-1 rounded cursor-pointer" onclick={() => {
         if (!currentTab) return;
-        invoke('read_file_text', { path: currentTab.path }).then((content) => {
+        import('../../platform/ipc').then(({ fileIpc }) => fileIpc.readText(currentTab.path).then((content) => {
           editorStore.setInitialContent(tabId, content as string);
         }).catch(async (err) => {
           if (String(err) === '__LARGE_FILE__') {
             try {
-              const chunked = await invoke<any>('read_file_chunked', { path: currentTab.path });
+              const chunked = await fileIpc.readChunked(currentTab.path);
               editorStore.setInitialContent(tabId, chunked.content);
               editorStore.updateTab(tabId, { isLargeFile: true, isPreview: true });
             } catch(e) {}
           }
-        });
+        }));
+      
       }}>Reload from Disk</button>
     </div>
   {/if}
@@ -1082,7 +1069,7 @@
       </div>
     {/if}
   </div>
-  <div bind:this={editorEl} class="{hideContent ? 'flex-none' : 'h-full flex-1'} relative editor-container {tabStatus === 'deleted' || tabStatus === 'conflict' ? 'pt-8' : ''} {iconThemeClass} {hideContent ? 'hide-cm-content' : ''} {isHeaderOnly ? 'z-20' : 'z-10'}">
+  <div bind:this={editorEl} class="{hideContent ? 'flex-none h-7' : 'h-full flex-1'} relative editor-container {tabStatus === 'deleted' || tabStatus === 'conflict' ? 'pt-8' : ''} {iconThemeClass} {hideContent ? 'hide-cm-content' : ''} {isHeaderOnly ? 'z-20' : 'z-10'}">
   </div>
   
   {#if children}
@@ -1117,8 +1104,12 @@
     overflow: hidden !important;
   }
   :global(.hide-cm-content .cm-editor) {
-    height: auto !important;
+    height: 28px !important;
+    min-height: 28px !important;
     overflow: visible !important;
   }
+  :global(.hide-cm-content .cm-panels-top) {
+    display: block !important;
+    height: 28px !important;
+  }
 </style>
-

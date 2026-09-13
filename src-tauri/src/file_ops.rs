@@ -1,3 +1,6 @@
+// File Ops
+//
+// Rust module.
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -632,7 +635,7 @@ static FILENAME_LANGUAGE_MAP: &[(&str, &str)] = &[
     ("Makefile", "shell"),
     ("makefile", "shell"),
     ("GNUmakefile", "shell"),
-    // --- Lock files ---
+    // Lock files
     ("bun.lock", "json"),
     ("composer.lock", "json"),
     ("Cargo.lock", "toml"),
@@ -642,14 +645,14 @@ static FILENAME_LANGUAGE_MAP: &[(&str, &str)] = &[
     ("Gemfile.lock", "yaml"),
     ("requirements.txt", "properties"),
     ("constraints.txt", "properties"),
-    // --- Ruby-based config files ---
+    // Ruby-based config files
     ("Gemfile", "ruby"),
     ("Vagrantfile", "ruby"),
     ("Brewfile", "ruby"),
     ("Rakefile", "ruby"),
-    // --- Groovy ---
+    // Groovy
     ("Jenkinsfile", "groovy"),
-    // --- Procfile ---
+    // Procfile
     ("Procfile", "properties"),
 ];
 

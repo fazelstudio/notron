@@ -1,3 +1,6 @@
+// Lib
+//
+// Rust module.
 mod config;
 mod db;
 mod file_ops;

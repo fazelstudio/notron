@@ -1,3 +1,8 @@
+/**
+ * Vite Env.D
+ *
+ * Module file..
+ */
 /// <reference types="vite/client" />
 
 declare module '@exercism/codemirror-lang-gleam';

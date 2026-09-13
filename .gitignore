@@ -38,6 +38,7 @@ Thumbs.db
 # ── Project reports & module scratch space ──
 reports/
 modules/
+prompt/
 references/
 
 # ── Testing ──

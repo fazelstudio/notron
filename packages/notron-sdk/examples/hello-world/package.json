@@ -1,0 +1,18 @@
+{
+  "name": "acme-hello-world",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Hello World smoke test for notron-sdk Fase 2",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "notron-sdk": "file:../.."
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3"
+  }
+}

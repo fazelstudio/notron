@@ -1,0 +1,11 @@
+import { okaidia, defaultSettingsOkaidia } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "okaidia";
+export const label = "Okaidia";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = okaidia;
+export const settings = defaultSettingsOkaidia;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/okaidia.ts" });

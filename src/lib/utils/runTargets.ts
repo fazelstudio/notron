@@ -1,4 +1,10 @@
-// ── Run target registry ─────────────────────────────────────────────────────
+/**
+ * Run Targets
+ *
+ * Utility helpers for run targets.
+ */
+
+// Run target registry
 //
 // Single source of truth for "which files can Notron run" and HOW to run them.
 // Both the configuration detector (runService) and the command builder read
@@ -8,7 +14,7 @@
 // PTY) and must never use `&&` / `||` — Windows PowerShell 5.1 does not
 // support them. Compile-and-run targets emit two statements:
 //   <compile>; if ($?) { & <exe> }
-// mirroring VS Code task chaining while staying 5.1-compatible.
+// mirroring the editor task chaining while staying 5.1-compatible.
 
 /** A file that can be run standalone, mapped to its runner. */
 export interface RunFileTarget {

@@ -1,3 +1,9 @@
+/**
+ * Explorer
+ *
+ * Utility helpers for explorer.
+ */
+
 export type ClipboardOp = 'copy' | 'cut' | null;
 export type CreatingType = 'file' | 'folder' | null;
 export type ConflictStrategy = 'skip' | 'replace' | 'rename' | 'cancel';

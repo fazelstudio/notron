@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-material",
+  "name": "theme-material",
+  "displayName": "Material",
+  "description": "Material theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "material",
+        "label": "Material",
+        "uiTheme": "dark",
+        "path": "./themes/material.ts"
+      }
+    ]
+  }
+}

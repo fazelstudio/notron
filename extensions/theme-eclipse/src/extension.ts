@@ -1,0 +1,11 @@
+import { eclipse, defaultSettingsEclipse } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "eclipse";
+export const label = "Eclipse";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = eclipse;
+export const settings = defaultSettingsEclipse;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/eclipse.ts" });

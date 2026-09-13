@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-noctis-lilac",
+  "name": "theme-noctis-lilac",
+  "displayName": "Noctis Lilac",
+  "description": "Noctis Lilac theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "noctis-lilac",
+        "label": "Noctis Lilac",
+        "uiTheme": "light",
+        "path": "./themes/noctis-lilac.ts"
+      }
+    ]
+  }
+}

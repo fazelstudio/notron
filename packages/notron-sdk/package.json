@@ -1,0 +1,67 @@
+{
+  "name": "notron-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Notron Extension SDK — public API surface for building Notron extensions.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "notron-sdk": "./dist/cli/bin.js",
+    "ntrn": "./dist/cli/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/cli/templates"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "check": "tsc --noEmit",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test --ext .ts",
+    "lint:fix": "eslint src test --ext .ts --fix"
+  },
+  "peerDependencies": {
+    "notron": "0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "notron": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "esbuild": "^0.28.2"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "@typescript-eslint/parser": "6.21.0",
+    "eslint": "8.57.1",
+    "typescript": "~5.8.3"
+  },
+  "keywords": [
+    "notron",
+    "editor",
+    "extension",
+    "sdk"
+  ],
+  "license": "MIT"
+}

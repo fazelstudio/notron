@@ -1,0 +1,11 @@
+import { dracula, defaultSettingsDracula } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "dracula";
+export const label = "Dracula";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = dracula;
+export const settings = defaultSettingsDracula;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/dracula.ts" });

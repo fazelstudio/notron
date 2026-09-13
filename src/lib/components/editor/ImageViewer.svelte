@@ -79,7 +79,7 @@
 />
 
 <div 
-  class="w-full h-full flex items-center justify-center bg-canvas text-primary overflow-auto p-4"
+  class="w-full h-full flex items-center justify-center bg-editor text-primary overflow-auto p-4"
   onwheel={handleWheel}
   onclick={handleClick}
   style="cursor: {isCtrlPressed ? 'zoom-out' : 'zoom-in'};"

@@ -1140,7 +1140,7 @@ pub async fn git_cancel_op(op_id: String, state: State<'_, GitState>) -> Result<
     }
     Ok(())
 }
-// ---- Basic operations ----
+// Basic operations.
 
 #[tauri::command]
 pub async fn git_init(app: AppHandle, cwd: String, state: State<'_, GitState>) -> Result<(), String> {

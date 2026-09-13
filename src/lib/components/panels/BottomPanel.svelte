@@ -1,22 +1,30 @@
 <script lang="ts">
+/**
+ * BottomPanel
+ *
+ * Bottom panel host: terminal, output, problems and extension panels
+ * contributed through the bottom panel registry.
+ */
   import { untrack } from 'svelte';
   import { terminalStore, type TerminalType } from '../../stores/terminal';
   import { uiStore } from '../../stores/ui';
-  import { editorStore } from '../../stores/editor';
   import { getPlatformShells } from '../../utils/platform';
   import { SHELL_DISPLAY_NAMES } from '../../constants';
   import TerminalInstance from './TerminalInstance.svelte';
   import Tooltip from '../common/Tooltip.svelte';
+  import ViewTitleMenu from '../common/ViewTitleMenu.svelte';
+  import { bottomPanelRegistry } from '../../workbench/bottomPanelRegistry';
+  import { commandRegistry } from '../../commands/registry';
+  import { eventBus } from '../../utils/eventBus';
   import DropdownMenu from '../common/DropdownMenu.svelte';
   const termStore = terminalStore;
-  const { activeTabId } = editorStore;
   
   let isDropdownOpen = $state(false);
-  let prevTabId = $state<string | null>(null);
   let outputSearch = $state('');
   let outputCategory = $state('Git');
 
   let outputContainer = $state<HTMLDivElement | null>(null);
+  let componentVersion = $state(0);
   let isAtBottom = $state(true);
 
   function onOutputScroll() {
@@ -49,29 +57,15 @@
       const root = uiStore.getSnapshot().explorerRoot || '';
       const fullPath = `${root}\\${filePath.replace(/\//g, '\\')}`;
 
-      // Route through the central open handler so the tab lands in the active
-      // pane exactly like every other open entry point.
-      window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: fullPath } }));
+      eventBus.emit('request-open-file', { path: fullPath });
 
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('editor:action', {
-          detail: { action: 'goto', line, column: col, endColumn: col }
-        }));
+        eventBus.emit('editor:action', { action: 'goto', line, column: col, endColumn: col });
       }, 50);
     } catch (err) {
       console.error("Failed to open problem file", err);
     }
   }
-
-  $effect(() => {
-    const currentTabId = $activeTabId;
-    if (currentTabId !== prevTabId) {
-      prevTabId = currentTabId;
-      if ($termStore.isMaximized) {
-        terminalStore.setMaximize(false);
-      }
-    }
-  });
 
   $effect(() => {
     if ($termStore.activePanel === 'terminal' && $termStore.isVisible && $termStore.terminals.length === 0) {
@@ -80,77 +74,94 @@
   });
 
   function createTerminal(type?: TerminalType) {
-    const cwd = uiStore.getSnapshot().explorerRoot || '';
-    terminalStore.newTerminal(type, cwd);
+    void type;
+    void commandRegistry.execute('workbench.action.terminal.new');
     isDropdownOpen = false;
   }
-  
-  function startResize(e: MouseEvent) {
-    if ($termStore.isMaximized) return;
-    e.preventDefault();
-    terminalStore.setResizing(true);
-    const startY = e.clientY;
-    const startHeight = $termStore.height;
 
-    function onMouseMove(me: MouseEvent) {
-      if (!$termStore.isResizing) return;
-      const delta = startY - me.clientY;
-      terminalStore.setHeight(Math.max(100, Math.min(window.innerHeight - 100, startHeight + delta)));
+  $effect(() => {
+    const d = bottomPanelRegistry.onDidChange(() => {
+      componentVersion++;
+    });
+    return () => d.dispose();
+  });
+
+  let visiblePanels = $derived.by(() => {
+    void componentVersion;
+    const visible = bottomPanelRegistry.getVisible();
+    // Fallback to defaults if registry not yet populated (prevents empty header flash)
+    if (visible.length === 0) {
+      const all = bottomPanelRegistry.getAll();
+      return all.length > 0 ? all : visible;
     }
+    return visible;
+  });
 
-    function onMouseUp() {
-      terminalStore.setResizing(false);
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
+  // Ensure activePanel is always a visible panel — fallback to first visible if stale
+  $effect(() => {
+    const panels = visiblePanels;
+    const active = $termStore.activePanel;
+    if (panels.length > 0 && !panels.some((p) => p.id === active)) {
+      untrack(() => terminalStore.setActivePanelSilently?.(panels[0].id as any) ?? terminalStore.setActivePanel(panels[0].id as any));
     }
+  });
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+  function handleTabClick(panelId: string) {
+    // Core panels go through commands for modularity; extension panels fallback to store
+    if (panelId === 'terminal') void commandRegistry.execute('workbench.action.terminal.show');
+    else if (panelId === 'output') void commandRegistry.execute('workbench.actions.view.output');
+    else if (panelId === 'problems') void commandRegistry.execute('workbench.actions.view.problems');
+    else terminalStore.setActivePanel(panelId as any);
   }
 </script>
 
-<div 
-  class="flex flex-col border-t border-subtle bg-surface-2 transition-all z-40 relative"
+<div
+  class="flex flex-col border-t transition-all z-40 relative bg-[var(--nt-panel-bg)] border-[var(--nt-panel-border)]"
   class:hidden={!$termStore.isVisible}
   class:flex-1={$termStore.isMaximized}
   style="{$termStore.isMaximized ? '' : `height: ${$termStore.height}px`};"
 >
-    <!-- Drag Overlay to prevent text selection while resizing -->
-    {#if $termStore.isResizing}
-      <div class="fixed inset-0 z-[9999] cursor-ns-resize"></div>
-    {/if}
-    <!-- Resizer -->
     {#if !$termStore.isMaximized}
       <div 
         role="presentation"
         class="absolute top-0 left-0 right-0 h-1 -mt-0.5 cursor-ns-resize hover:bg-indicator-active z-50 transition-colors"
-        onmousedown={startResize}
+    onmousedown={(e) => {
+      e.preventDefault();
+      const startY = e.clientY;
+      const startHeight = $termStore.height;
+      function onMouseMove(me: MouseEvent) {
+        if (!$termStore.isResizing) return;
+        const delta = startY - me.clientY;
+        terminalStore.setHeight(Math.max(100, Math.min(window.innerHeight - 100, startHeight + delta)));
+      }
+      function onMouseUp() {
+        terminalStore.setResizing(false);
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      }
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }}
       ></div>
     {/if}
 
-    <!-- Header -->
-    <div class="flex items-center justify-between h-9 px-4 border-b border-subtle bg-surface shrink-0 select-none">
+  <div class="flex items-center justify-between h-9 px-4 border-b shrink-0 select-none bg-[var(--nt-panel-bg)] border-[var(--nt-panel-border)]">
       <div class="flex items-center gap-4 h-full">
+      {#each visiblePanels as item (item.id)}
         <button 
-          class="h-full text-xs font-semibold uppercase tracking-widest flex items-center border-b-2 transition-colors { $termStore.activePanel === 'problems' ? 'text-primary border-accent' : 'text-secondary border-transparent hover:text-primary' }"
-          onclick={() => terminalStore.setActivePanel('problems')}
+          class="h-full text-xs font-semibold uppercase tracking-widest flex items-center border-b-2 transition-colors { $termStore.activePanel === item.id ? 'text-primary border-accent' : 'text-secondary border-transparent hover:text-primary' }"
+          onclick={() => handleTabClick(item.id)}
         >
-          Problems
-          <span class="ml-1.5 flex items-center justify-center rounded-full bg-surface-2 border border-subtle w-4 h-4 text-[10px]">7</span>
+          {item.label}
+          {#if item.badge}
+            {@const badge = item.badge()}
+            {#if badge}
+              <span class="ml-1.5 flex items-center justify-center rounded-full bg-panel border border-subtle w-4 h-4 text-[10px]">{badge}</span>
+            {/if}
+          {/if}
         </button>
-        <button 
-          class="h-full text-xs font-semibold uppercase tracking-widest flex items-center border-b-2 transition-colors { $termStore.activePanel === 'output' ? 'text-primary border-accent' : 'text-secondary border-transparent hover:text-primary' }"
-          onclick={() => terminalStore.setActivePanel('output')}
-        >
-          Output
-        </button>
-        <button 
-          class="h-full text-xs font-semibold uppercase tracking-widest flex items-center border-b-2 transition-colors { $termStore.activePanel === 'terminal' ? 'text-primary border-accent' : 'text-secondary border-transparent hover:text-primary' }"
-          onclick={() => terminalStore.setActivePanel('terminal')}
-        >
-          Terminal
-        </button>
-      </div>
+      {/each}
+        </div>
       <div class="flex items-center gap-1 text-icon-default relative">
         {#if $termStore.activePanel === 'terminal'}
         <div class="relative">
@@ -166,7 +177,6 @@
           </Tooltip>
           
           {#if isDropdownOpen}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="fixed inset-0 z-[99]"
               role="presentation"
@@ -175,7 +185,7 @@
               onkeydown={(e) => { if (e.key === 'Escape') isDropdownOpen = false; }}
             ></div>
             <div 
-              class="absolute top-full right-0 mt-1 min-w-[160px] rounded-md border p-1 shadow-elevated z-[100] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary flex flex-col"
+              class="absolute top-full right-0 mt-1 min-w-[160px] rounded-md border p-1 shadow-elevated z-[100] animate-in fade-in duration-100 bg-panel border-subtle text-primary flex flex-col"
             >
               {#each getPlatformShells() as shellType (shellType)}
                 <button
@@ -187,22 +197,21 @@
               {/each}
             </div>
           {/if}
-        </div>
         
         <Tooltip content="Kill Terminal" side="top">
           <button 
             aria-label="Delete Active Terminal" 
-            onclick={() => $termStore.activeTerminalId && terminalStore.closeTerminal($termStore.activeTerminalId)} 
+            onclick={() => commandRegistry.execute('workbench.action.terminal.killActive')} 
             class="p-1 rounded hover:bg-hover hover:text-error transition-colors"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-          </button>
-        </Tooltip>
-        {/if}
-        
-        {#if $termStore.activePanel === 'output'}
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/></svg>
+          </button>        </Tooltip>
+          </div>
+          {/if}
+          
+          {#if $termStore.activePanel === 'output'}
         <div class="relative flex items-center h-full mr-2">
-          <input type="text" placeholder="Filter" class="bg-surface border border-subtle text-[11px] pl-6 pr-2 py-0.5 rounded w-40 text-primary outline-none placeholder-muted" bind:value={outputSearch} />
+          <input type="text" placeholder="Filter" class="bg-panel border border-subtle text-[11px] pl-6 pr-2 py-0.5 rounded w-40 text-primary outline-none placeholder-muted" bind:value={outputSearch} />
           <svg class="absolute left-1.5 top-1.5 w-3 h-3 text-muted" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </div>
         {#snippet categoryTrigger()}
@@ -218,7 +227,7 @@
         <Tooltip content="Clear Output" side="top">
           <button 
             aria-label="Clear Output" 
-            onclick={() => terminalStore.clearOutput()} 
+            onclick={() => commandRegistry.execute('workbench.action.terminal.clear')} 
             class="p-1 rounded hover:bg-hover hover:text-icon-active transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
@@ -229,7 +238,7 @@
         <Tooltip content="Maximize Panel" side="top">
           <button 
             aria-label="Maximize Terminal" 
-            onclick={() => terminalStore.toggleMaximize()} 
+            onclick={() => commandRegistry.execute('workbench.action.terminal.maximize')} 
             class="p-1 rounded hover:bg-hover hover:text-icon-active transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -245,16 +254,17 @@
         <Tooltip content="Hide Terminal" side="top">
           <button 
             aria-label="Close Terminal Panel" 
-            onclick={() => terminalStore.setVisibility(false)} 
+            onclick={() => commandRegistry.execute('workbench.action.terminal.hide')} 
             class="p-1 rounded hover:bg-hover hover:text-icon-active transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </Tooltip>
-      </div>
+        <ViewTitleMenu menuId={`panel/${$termStore.activePanel}/title`} />
+        </div>
     </div>
 
-    <!-- Body -->
+  <!-- Body — core panels render inline; extension panels render via registry loadComponent -->
     <div class="flex-1 flex overflow-hidden">
       <!-- Terminal Panel -->
       <div class="flex-1 flex overflow-hidden" class:hidden={$termStore.activePanel !== 'terminal'}>
@@ -263,7 +273,7 @@
         {#if $termStore.terminals.length === 0}
           <div class="absolute inset-0 flex flex-col items-center justify-center text-muted gap-4">
             <span class="text-sm">No Active Terminals</span>
-            <button class="px-4 py-2 bg-accent text-on-accent rounded-md hover:brightness-110 transition-all text-xs" onclick={() => createTerminal()}>New Terminal</button>
+            <button class="px-4 py-2 bg-accent text-on-accent rounded-md hover:brightness-110 transition-all text-xs" onclick={() => commandRegistry.execute('workbench.action.terminal.new')}>New Terminal</button>
           </div>
         {/if}
         {#each $termStore.terminals as term (term.id)}
@@ -282,7 +292,7 @@
 
       <!-- Sidebar -->
       {#if $termStore.terminals.length > 1}
-        <div class="w-48 border-l border-subtle bg-surface flex flex-col overflow-y-auto shrink-0">
+        <div class="w-48 border-l border-subtle bg-panel flex flex-col overflow-y-auto shrink-0">
           {#each $termStore.terminals as term (term.id)}
             <button 
               class="px-3 py-2 text-xs text-left truncate transition-colors flex items-center justify-between group"
@@ -290,7 +300,7 @@
               class:text-primary={$termStore.activeTerminalId === term.id}
               class:text-secondary={$termStore.activeTerminalId !== term.id}
               class:hover:bg-hover={$termStore.activeTerminalId !== term.id}
-              onclick={() => terminalStore.setActive(term.id)}
+              onclick={() => { terminalStore.setActive(term.id); }}
             >
               <span class="truncate flex-1 pr-2">{term.name}</span>
               <div 
@@ -300,7 +310,7 @@
                 onclick={(e) => { e.stopPropagation(); terminalStore.closeTerminal(term.id); }}
                 onkeydown={(e) => { if (e.key === 'Enter') terminalStore.closeTerminal(term.id); }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/></svg>
               </div>
             </button>
           {/each}
@@ -387,5 +397,19 @@
             <span class="truncate">The class <code class="text-primary font-bold min-w-0">`px-[1px]`</code> can be written as <code class="text-primary font-bold min-w-0">`px-px`</code> <span class="text-muted">tailwindcss(suggestCanonicalClasses)</span> <span class="text-muted">[Ln 428, Col 96]</span></span>
           </div>
         </div>
-      </div>
+
+      <!-- Extension-contributed panels (dynamic via loadComponent) -->
+      {#each visiblePanels.filter(p => !['terminal','output','problems'].includes(p.id) && p.loadComponent) as item (item.id)}
+        <div class="flex-1 flex overflow-hidden" class:hidden={$termStore.activePanel !== item.id}>
+          {#await item.loadComponent!() then module}
+            {@const Component = module.default ?? module}
+            {#if Component}
+              <div class="flex-1 flex overflow-hidden">
+                <Component />
+              </div>
+            {/if}
+          {/await}
+        </div>
+      {/each}
     </div>
+</div>

@@ -1,3 +1,6 @@
+// Workspace Cache
+//
+// Rust module.
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{ipc::Channel, State};

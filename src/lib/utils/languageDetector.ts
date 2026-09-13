@@ -1,9 +1,16 @@
+/**
+ * Language Detector
+ *
+ * Utility helpers for language detector.
+ */
+
 import type { Extension } from '@codemirror/state';
 import { StreamLanguage } from '@codemirror/language';
+import { languageRegistry } from '../editor/languageRegistry';
 import { foldInside, foldNodeProp, LRLanguage, LanguageSupport } from '@codemirror/language';
 import langMap from '../constants/languages.json';
 
-// ── Extension → lang name reverse map (built from languages.json at import time) ──
+// Extension → lang name reverse map (built from languages.json at import time)
 // languages.json is the single source of truth for extension mapping;
 // Rust's file_ops.rs uses the same file via include_str!().
 const EXT_TO_LANG: Record<string, string> = {};
@@ -13,9 +20,9 @@ for (const [lang, exts] of Object.entries(langMap)) {
   }
 }
 
-// ── Exact basename → lang name (dotfiles / extensionless config files) ────────
+// Exact basename → lang name (dotfiles / extensionless config files)
 // These cannot live in languages.json because they are matched by full filename,
-// not by extension. Note: @codemirror/lang-angular is intentionally absent —
+// not by extension. Note: @codemirror/lang-angular is intentionally absent
 // it's for inline Angular templates inside .ts files, not standalone files.
 const FILENAME_TO_LANG: Record<string, string> = {
   // .env variants → properties/INI
@@ -81,7 +88,7 @@ const FILENAME_TO_LANG: Record<string, string> = {
   'Procfile': 'properties',
 };
 
-// ── Aliases for Markdown code fence language labels ───────────────────────────
+// Aliases for Markdown code fence language labels
 // Maps fence tags that differ from LANG_LOADERS keys to their canonical key.
 const MARKDOWN_LANG_ALIAS: Record<string, string> = {
   bash:       'shell',
@@ -93,7 +100,7 @@ const MARKDOWN_LANG_ALIAS: Record<string, string> = {
   dockerfile: 'dockerfile',
 };
 
-// ── Fold-patch helper for community packages without built-in fold support ────
+// Fold-patch helper for community packages without built-in fold support
 function patchFold(lang: any, nodeMap: any, langName: string) {
   if (lang.language?.parser) {
     const patched = lang.language.parser.configure({ props: [foldNodeProp.add(nodeMap)] });
@@ -102,7 +109,7 @@ function patchFold(lang: any, nodeMap: any, langName: string) {
   return lang;
 }
 
-// ── Language loader registry ──────────────────────────────────────────────────
+// Language loader registry
 // Keys MUST match the lang names used in languages.json.
 // Each loader receives the original file extension for ext-sensitive configs
 // (e.g. sass vs scss, haxe vs hxml, verilog vs tlv).
@@ -112,7 +119,7 @@ type Loader = (ext: string) => Promise<Extension>;
 
 const LANG_LOADERS: Record<string, Loader> = {
 
-  // ── Dedicated first-party / community packages ──────────────────────────────
+ // Dedicated first-party / community packages
 
   javascript: async () => {
     const { javascript } = await import('@codemirror/lang-javascript');
@@ -369,7 +376,7 @@ const LANG_LOADERS: Record<string, Loader> = {
     return luau();
   },
 
-  // ── Legacy modes (StreamLanguage wrappers) ──────────────────────────────────
+ // Legacy modes (StreamLanguage wrappers)
 
   shell: async () => {
     const { shell } = await import('@codemirror/legacy-modes/mode/shell');
@@ -710,7 +717,24 @@ const LANG_LOADERS: Record<string, Loader> = {
   },
 };
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// Public API
+
+// Every loader is published as a language contribution so the language
+// registry is the single lookup path for loading a language. Adding a
+// language stays one entry in languages.json + one loader here.
+for (const [id, load] of Object.entries(LANG_LOADERS)) {
+  languageRegistry.register({
+    id,
+    extensions: [...(((langMap as Record<string, string[]>)[id]) ?? [])],
+    load: (ext) => load(ext)
+  });
+}
+
+async function loadLanguage(langId: string, ext: string): Promise<Extension | null> {
+  const contrib = languageRegistry.get(langId);
+  if (!contrib) return null;
+  return (await contrib.load(ext)) as Extension;
+}
 
 export async function getLanguageExtension(filename: string): Promise<Extension> {
   const basename = filename.split(/[\\\/]/).pop() ?? filename;
@@ -719,15 +743,15 @@ export async function getLanguageExtension(filename: string): Promise<Extension>
   // 1. Exact filename match (dotfiles, lock files, extensionless config files)
   const filenameLang = FILENAME_TO_LANG[basename];
   if (filenameLang) {
-    const loader = LANG_LOADERS[filenameLang];
-    if (loader) return loader(ext);
+    const loaded = await loadLanguage(filenameLang, ext);
+    if (loaded) return loaded;
   }
 
   // 2. Extension → lang name via languages.json reverse map, then load
   const lang = EXT_TO_LANG[ext];
   if (lang) {
-    const loader = LANG_LOADERS[lang];
-    if (loader) return loader(ext);
+    const loaded = await loadLanguage(lang, ext);
+    if (loaded) return loaded;
   }
 
   return [];

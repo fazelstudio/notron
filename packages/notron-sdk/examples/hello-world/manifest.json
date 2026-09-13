@@ -1,0 +1,23 @@
+{
+  "id": "acme.hello-world",
+  "name": "hello-world",
+  "displayName": "Hello World",
+  "description": "Smoke test for notron-sdk Fase 2 — exercises commands, window, and workspace APIs.",
+  "version": "0.1.0",
+  "publisher": "acme",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onCommand:acme.helloWorld", "onStartupFinished"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "acme.helloWorld",
+        "title": "Hello World",
+        "category": "Acme"
+      }
+    ]
+  },
+  "permissions": ["fs:workspace-read", "fs:workspace-write"]
+}

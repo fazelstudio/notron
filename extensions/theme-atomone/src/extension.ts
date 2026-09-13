@@ -1,0 +1,11 @@
+import { atomone, defaultSettingsAtomone } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "atomone";
+export const label = "Atom One";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = atomone;
+export const settings = defaultSettingsAtomone;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/atomone.ts" });

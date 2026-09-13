@@ -1,3 +1,9 @@
+/**
+ * Git Decoration
+ *
+ * State store for git decoration.
+ */
+
 import { writable } from 'svelte/store';
 import { listen } from '@tauri-apps/api/event';
 

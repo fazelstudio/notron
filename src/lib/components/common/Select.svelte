@@ -50,7 +50,7 @@
     {id}
     type="button"
     onclick={() => isOpen = !isOpen}
-    class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm bg-canvas border border-subtle rounded transition-colors hover:border-strong focus:border-focus focus:outline-none text-left"
+    class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm bg-input border border-subtle rounded transition-colors hover:border-strong focus:border-focus focus:outline-none text-left"
     class:border-focus={isOpen}
   >
     <span class="truncate block text-primary" class:text-muted={!value}>{selectedLabel}</span>
@@ -58,7 +58,7 @@
   </button>
 
   {#if isOpen}
-    <div class="absolute z-50 top-[100%] right-0 min-w-full flex flex-col border border-subtle rounded mt-1 bg-surface-2 overflow-y-auto shadow-elevated max-h-60">
+    <div class="absolute z-50 top-[100%] right-0 min-w-full flex flex-col border border-subtle rounded mt-1 bg-elevated overflow-y-auto shadow-elevated max-h-60">
       {#each normalizedOptions as opt}
         <button
           type="button"

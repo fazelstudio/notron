@@ -1,3 +1,9 @@
+/**
+ * Markdown Render
+ *
+ * Utility helpers for markdown render.
+ */
+
 import { marked } from 'marked';
 
 export type TocNode = {

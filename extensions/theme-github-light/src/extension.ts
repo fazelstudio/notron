@@ -1,0 +1,11 @@
+import { githubLight, defaultSettingsGithubLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "github-light";
+export const label = "GitHub Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = githubLight;
+export const settings = defaultSettingsGithubLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/github-light.ts" });

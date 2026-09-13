@@ -1,0 +1,11 @@
+import { consoleLight, defaultSettingsConsoleLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "console-light";
+export const label = "Console Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = consoleLight;
+export const settings = defaultSettingsConsoleLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/console-light.ts" });

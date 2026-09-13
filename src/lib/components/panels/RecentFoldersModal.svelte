@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { eventBus } from '../../utils/eventBus';
   import { uiStore } from '../../stores/ui';
   import { exists } from '@tauri-apps/plugin-fs';
   import Modal from '../common/Modal.svelte';
@@ -14,7 +15,7 @@
     try {
       const doesExist = await exists(path);
       if (!doesExist) { alert(`Path not found: ${path}`); return; }
-      window.dispatchEvent(new CustomEvent('request-workspace-switch', { detail: { path } }));
+      eventBus.emit('request-workspace-switch', { path });
       uiStore.closeRecentFoldersModal();
     } catch (err) { alert(`Failed to load folder: ${err}`); }
   }

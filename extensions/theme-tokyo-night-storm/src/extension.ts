@@ -1,0 +1,11 @@
+import { tokyoNightStorm, defaultSettingsTokyoNightStorm } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "tokyo-night-storm";
+export const label = "Tokyo Night Storm";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = tokyoNightStorm;
+export const settings = defaultSettingsTokyoNightStorm;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/tokyo-night-storm.ts" });

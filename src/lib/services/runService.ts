@@ -1,3 +1,10 @@
+/**
+ * Run Service
+ *
+ * Runs launch configurations in the integrated terminal (PTY): detects
+ * configurations, resolves variables and spawns the run terminal.
+ */
+
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { runStore, type RunConfiguration } from '../stores/run';
@@ -18,6 +25,10 @@ import {
   quoteFor,
   type ShellDialect
 } from '../utils/runTargets';
+import { runProviderRegistry } from '../workbench/runRegistry';
+import { taskRegistry } from '../workbench/taskRegistry';
+// Side-effect import: publishes the built-in runtime providers.
+import './run/runProviders';
 import { getPlatformShells, getPlatformDefaultShell } from '../utils/platform';
 import { settingsStore } from '../stores/settings.svelte';
 import {
@@ -27,7 +38,7 @@ import {
   LAUNCH_JSON_FILE
 } from '../constants';
 
-// ── Run service ─────────────────────────────────────────────────────────────
+// Run service
 // Runs a launch configuration in the integrated terminal (PTY).
 //
 // Flow mirrors VS Code's "Run Without Debugging":
@@ -303,7 +314,7 @@ async function detectConfigurations(workspaceFolder: string, activeFile: string 
     lastLaunchErrorSig = null;
   }
 
-  // ── Entry point resolution engine (manifest → framework → heuristic).
+  // Entry point resolution engine (manifest → framework → heuristic).
   // Replaces the old hardcoded extension check: reads package.json / pyproject
   // BEFORE guessing filenames, so "src/index.js" is honored over a root one.
   const activeDir = activeFile ? dirname(activeFile) : undefined;
@@ -322,7 +333,26 @@ async function detectConfigurations(workspaceFolder: string, activeFile: string 
     }
   }
 
-  // ── Active file fallback (registry-driven: covers every registered
+  // Workspace task providers (npm, cargo, ...) contribute runnable entries as
+  // data, so "Run" is not limited to manifest-detected entry points and the
+  // run service never hardcodes a project layout.
+  const taskConfigs: RunConfiguration[] = [];
+  if (workspaceFolder) {
+    const tasks = await taskRegistry.provideAll(workspaceFolder).catch(() => []);
+    for (const task of tasks) {
+      taskConfigs.push({
+        name: task.label,
+        type: 'task',
+        request: 'launch',
+        command: [task.command, ...(task.args ?? [])].join(' '),
+        cwd: task.cwd || workspaceFolder,
+        source: 'detected',
+        detectedTier: 'manifest'
+      });
+    }
+  }
+
+  // Active file fallback (registry-driven: covers every registered
   // language, not just the previous js/ts/py/go/rb list).
   const currentFileConfigs: RunConfiguration[] = [];
   if (activeFile) {
@@ -339,7 +369,7 @@ async function detectConfigurations(workspaceFolder: string, activeFile: string 
   // Confidence order: launch.json (explicit) → engine (manifest /
   // framework / heuristic) → "Current File" fallback. Dedup by (type + program)
   // while never collapsing framework dev-servers that have no program file.
-  const ordered = [...configs, ...resolvedConfigs, ...currentFileConfigs];
+  const ordered = [...configs, ...resolvedConfigs, ...taskConfigs, ...currentFileConfigs];
   return ordered.filter((cfg, i, arr) => {
     if (!cfg.program || cfg.currentFile) return true;
     const sig = `${cfg.type}|${cfg.program}`;
@@ -555,92 +585,24 @@ function buildTerminalCommand(input: RunConfiguration): TerminalPlan | { unsuppo
     };
   }
 
-  if (resolved.type === 'node' || resolved.type === 'pwa-node' || resolved.type === 'node-terminal') {
-    // A pure command config ("npm run dev" via runtimeExecutable) is valid
-    // without a program field.
-    if (!resolved.program && resolved.runtimeExecutable) {
+  // Runtime dispatch goes through the Run provider registry — each runtime is
+  // one provider, so adding a language never edits this function.
+  const provider = runProviderRegistry.getForType(resolved.type);
+  if (provider) {
+    const result = provider.build(resolved, args, {
+      shell,
+      workspaceFolder,
+      activeFile,
+      joinCommand: (parts) => joinCommand(shell, parts)
+    });
+    if (result) {
+      if ('unsupported' in result) return result;
       return {
-        cwd: resolved.cwd || workspaceFolder,
-        label: resolved.name,
-        statements: [joinCommand(shell, [resolved.runtimeExecutable!, ...(resolved.runtimeArgs || []), ...args])]
+        cwd: result.cwd || workspaceFolder,
+        label: result.label,
+        statements: result.statements
       };
     }
-    if (!resolved.program) {
-      return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
-    }
-    const runtimeExecutable = resolved.runtimeExecutable || 'node';
-    const runtimeArgs = [...(resolved.runtimeArgs || [])];
-    return {
-      cwd: resolved.cwd || workspaceFolder,
-      label: resolved.name,
-      statements: [joinCommand(shell, [runtimeExecutable, ...runtimeArgs, resolved.program!, ...args])]
-    };
-  }
-
-  if (resolved.type === 'python' || resolved.type === 'debugpy') {
-    if (!resolved.program) {
-      return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
-    }
-    // Prefer an explicit runtime, then the detected venv interpreter.
-    const executable = resolved.runtimeExecutable || resolved.pythonPath || 'python';
-    return {
-      cwd: resolved.cwd || workspaceFolder,
-      label: resolved.name,
-      statements: [joinCommand(shell, [executable, resolved.program!, ...args])]
-    };
-  }
-
-  // Go: explicit configs run the picked file; resolver-detected entries carry
-  // command "go run ." which compiles the whole main package.
-  if (resolved.type === 'go') {
-    if (input.command) {
-      return { cwd: resolved.cwd || workspaceFolder, label: resolved.name, statements: [input.command] };
-    }
-    if (!resolved.program) {
-      return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
-    }
-    return {
-      cwd: resolved.cwd || workspaceFolder,
-      label: resolved.name,
-      statements: [joinCommand(shell, ['go', 'run', resolved.program!, ...args])]
-    };
-  }
-
-  if (resolved.type === 'ruby' || resolved.type === 'rdbg') {
-    if (!resolved.program) {
-      return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
-    }
-    const executable = resolved.runtimeExecutable || resolved.rubyPath || 'ruby';
-    return {
-      cwd: resolved.cwd || workspaceFolder,
-      label: resolved.name,
-      statements: [joinCommand(shell, [executable, resolved.program!, ...args])]
-    };
-  }
-
-  if (resolved.type === 'rust') {
-    return {
-      cwd: resolved.cwd || workspaceFolder,
-      label: resolved.name,
-      statements: [joinCommand(shell, ['cargo', 'run', ...args])]
-    };
-  }
-
-  if (resolved.type === 'deno') {
-    if (!resolved.program) {
-      return { unsupported: `Configuration "${resolved.name}" does not define a program.` };
-    }
-    return {
-      cwd: resolved.cwd || workspaceFolder,
-      label: resolved.name,
-      statements: [joinCommand(shell, ['deno', 'run', resolved.program!, ...args])]
-    };
-  }
-
-  if ((resolved.type === 'chrome' || resolved.type === 'pwa-chrome') && resolved.url) {
-    return {
-      unsupported: `Browser URL launch is not wired yet. Edit launch.json to configure the URL.`
-    };
   }
 
   return {
@@ -656,7 +618,7 @@ export function getRunPreview(config: RunConfiguration): string {
   return `${envPart}${built.statements.join(' ; ')}`;
 }
 
-// ── Terminal lifecycle: one terminal per config, rerun replaces, stop kills ─
+// Terminal lifecycle: one terminal per config, rerun replaces, stop kills
 
 /** label → terminal id of the most recent run for that configuration. */
 const runTerminals = new Map<string, string>();
@@ -667,7 +629,7 @@ function findTerminal(id: string | undefined) {
 }
 
 function launchInTerminal(plan: TerminalPlan, env?: Record<string, string>) {
-  // VS Code semantics: rerunning a configuration replaces its previous
+  // the editor semantics: rerunning a configuration replaces its previous
   // session instead of stacking terminals.
   const prevId = runTerminals.get(plan.label);
   if (prevId) {
@@ -784,7 +746,7 @@ export async function runSelectedConfiguration() {
   await executePlan(selected);
 }
 
-/** Run the active editor file directly (VS Code "Run Current File"). */
+/** Run the active editor file directly (the editor "Run Current File"). */
 export async function runCurrentFile() {
   const workspaceFolder = getWorkspaceRoot();
   if (!workspaceFolder) {

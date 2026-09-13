@@ -1,114 +1,186 @@
+/* App
+ *
+ * Style definitions.
+ */
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
 @theme {
-  /* Background layers */
-  --color-canvas: var(--bg-canvas);
-  --color-surface: var(--bg-surface);
-  --color-surface-2: var(--bg-surface-2);
-  --color-surface-3: var(--bg-surface-3);
-  --color-surface-4: var(--bg-surface-4);
-  --color-elevated: var(--bg-elevated);
+  --color-editor: var(--nt-editor-bg);
+  --color-sidebar: var(--nt-sidebar-bg);
+  --color-titlebar: var(--nt-titlebar-bg);
+  --color-panel: var(--nt-panel-bg);
+  --color-statusbar: var(--nt-statusbar-bg);
+  --color-elevated: var(--nt-overlay-bg);
+  --color-input: var(--nt-overlay-bg);
+
+  --color-canvas: var(--nt-editor-bg);
+  --color-surface: var(--nt-sidebar-bg);
+  --color-surface-2: var(--nt-overlay-bg);
+  --color-surface-3: var(--nt-tab-inactive-bg);
+  --color-surface-4: var(--nt-tab-inactive-bg);
 
   /* Interactive states */
   --color-hover: var(--bg-hover);
   --color-active: var(--bg-active);
   --color-selected: var(--bg-selected);
+  --color-disabled: var(--bg-disabled);
   --color-selected-hover: var(--bg-selected-hover);
 
-  /* Border */
-  --color-subtle: var(--border-subtle);
-  --color-strong: var(--border-strong);
-  --color-focus: var(--border-focus);
+  --color-subtle: var(--nt-editor-border);
+  --color-strong: var(--nt-prim-border-strong);
+  --color-border-disabled: var(--nt-prim-border);
+  --color-focus: var(--nt-focus-border);
 
-  /* Text */
-  --color-primary: var(--text-primary);
-  --color-secondary: var(--text-secondary);
-  --color-muted: var(--text-muted);
-  --color-inverse: var(--text-inverse);
-  --color-on-accent: var(--text-on-accent);
+  --color-primary: var(--nt-editor-fg);
+  --color-secondary: var(--nt-prim-fg-muted);
+  --color-disabled: var(--nt-prim-fg-subtle);
+  --color-placeholder: var(--nt-prim-fg-muted);
+  --color-muted: var(--nt-prim-fg-muted);
+  --color-inverse: var(--nt-prim-bg-base);
+  --color-on-error: #ffffff;
+  --color-on-success: #ffffff;
+  --color-on-accent: #ffffff;
 
-  /* Icon */
-  --color-icon-default: var(--icon-default);
-  --color-icon-muted: var(--icon-muted);
-  --color-icon-active: var(--icon-active);
-  --color-icon-active-tab: var(--icon-active-tab);
+  --color-icon-default: var(--nt-editor-fg);
+  --color-icon-muted: var(--nt-prim-fg-subtle);
+  --color-icon-active: var(--nt-editor-fg);
+  --color-icon-primary: var(--nt-editor-fg);
+  --color-icon-secondary: var(--nt-prim-fg-muted);
+  --color-icon-disabled: var(--nt-prim-fg-subtle);
+  --color-icon-active-tab: var(--nt-editor-fg);
 
-  /* Accent */
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-active: var(--accent-active);
-  --color-indicator-active: var(--indicator-active);
+  --color-accent: var(--nt-prim-accent);
+  --color-accent-hover: var(--nt-prim-accent);
+  --color-accent-active: var(--nt-prim-accent);
+  --color-indicator-active: var(--nt-activitybar-indicator);
 
-  /* Scrollbar */
-  --color-scrollbar-thumb: var(--scrollbar-thumb);
-  --color-scrollbar-thumb-hover: var(--scrollbar-thumb-hover);
+  --color-scrollbar-thumb: var(--nt-scrollbar-thumb);
+  --color-scrollbar-thumb-hover: var(--nt-scrollbar-thumb-hover);
 
-  /* Status — accessible as text-error, bg-warning, etc. in Tailwind */
-  --color-error: var(--color-status-error);
-  --color-warning: var(--color-status-warning);
-  --color-info: var(--color-status-info);
-  --color-success: var(--color-status-success);
+  --color-error: var(--nt-status-error);
+  --color-warning: var(--nt-status-warning);
+  --color-info: var(--nt-status-info);
+  --color-success: var(--nt-status-success);
 
-  /* Shadow */
-  --shadow-elevated-sm: var(--elevated-shadow-sm);
-  --shadow-elevated: var(--elevated-shadow);
+  --shadow-elevated-sm: var(--nt-overlay-shadow);
+  --shadow-elevated: var(--nt-overlay-shadow);
 }
 
-/* ── High Contrast Light (default :root) ───────────────────────────────────────
-   Pure white (#ffffff) bg, black text, blue (#0078d4) accent — VSCode HC Light */
 :root {
-  --bg-canvas: #ffffff;
-  --bg-surface: #ffffff;
-  --bg-surface-2: #ffffff;
-  --bg-surface-3: #f7f7f7;
-  --bg-surface-4: #efefef;
-  --bg-elevated: #ffffff;
-
-  --bg-hover: #f0f0f0;
-  --bg-active: #e0e0e0;
-  --bg-selected: #0078d4;
-  --bg-selected-hover: #006cc1;
-
-  --border-subtle: #0078d4;
-  --border-strong: #0078d4;
-  --border-focus: #0078d4;
-
-  --text-primary: #000000;
-  --text-secondary: #000000;
-  --text-muted: #444444;
-  --text-inverse: #ffffff;
+  --nt-prim-bg-base: #ffffff;
+  --nt-prim-bg-elevated: #f3f3f3;
+  --nt-prim-fg-base: #000000;
+  --nt-prim-fg-muted: rgba(0, 0, 0, 0.60);
+  --nt-prim-fg-subtle: rgba(0, 0, 0, 0.45);
+  --nt-prim-accent: #0078d4;
+  --nt-prim-border: rgba(0, 0, 0, 0.15);
+  --nt-prim-border-strong: rgba(0, 0, 0, 0.30);
+  --nt-prim-selection: #0078d4;
+  --nt-prim-cursor: #0078d4;
+  --nt-prim-line-highlight: #ffffff;
+  --nt-titlebar-bg: #c8c8c8;
+  --nt-titlebar-fg: #000000;
+  --nt-titlebar-border: rgba(0, 0, 0, 0.15);
+  --nt-activitybar-bg: #f3f3f3;
+  --nt-activitybar-fg: rgba(0, 0, 0, 0.60);
+  --nt-activitybar-fg-active: #000000;
+  --nt-activitybar-indicator: #0078d4;
+  --nt-activitybar-border: rgba(0, 0, 0, 0.15);
+  --nt-sidebar-bg: #f3f3f3;
+  --nt-sidebar-fg: #000000;
+  --nt-sidebar-header-bg: #f3f3f3;
+  --nt-sidebar-border: rgba(0, 0, 0, 0.15);
+  --nt-editor-bg: #ffffff;
+  --nt-editor-fg: #000000;
+  --nt-editor-gutter-fg: rgba(0, 0, 0, 0.45);
+  --nt-editor-line-highlight: #ffffff;
+  --nt-editor-selection: #0078d4;
+  --nt-editor-cursor: #0078d4;
+  --nt-editor-border: rgba(0, 0, 0, 0.15);
+  --nt-tabbar-bg: #f3f3f3;
+  --nt-tab-active-bg: #ffffff;
+  --nt-tab-inactive-bg: #f3f3f3;
+  --nt-tab-border: rgba(0, 0, 0, 0.15);
+  --nt-tab-active-border: #0078d4;
+  --nt-statusbar-bg: #007acc;
+  --nt-statusbar-fg: #ffffff;
+  --nt-statusbar-border: rgba(0, 0, 0, 0.15);
+  --nt-panel-bg: #f3f3f3;
+  --nt-panel-fg: #000000;
+  --nt-panel-border: rgba(0, 0, 0, 0.15);
+  --nt-overlay-bg: #f3f3f3;
+  --nt-overlay-fg: #000000;
+  --nt-overlay-border: rgba(0, 0, 0, 0.15);
+  --nt-overlay-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --nt-hover-bg: rgba(0, 0, 0, 0.06);
+  --nt-active-bg: rgba(0, 0, 0, 0.12);
+  --nt-selected-bg: #0078d4;
+  --nt-scrollbar-thumb: rgba(0, 0, 0, 0.35);
+  --nt-scrollbar-thumb-hover: rgba(0, 0, 0, 0.50);
+  --nt-focus-border: #0078d4;
+  --nt-status-error: #cc0000;
+  --nt-status-warning: #9a6700;
+  --nt-status-info: #0078d4;
+  --nt-status-success: #1a7f37;
+  --nt-untracked: #1a7f37;
+  --nt-ignored-fg: rgba(0, 0, 0, 0.45);
+  --nt-badge-bg: #0078d4;
+  --nt-badge-fg: #ffffff;
+  --bg-editor: var(--nt-editor-bg);
+  --bg-sidebar: var(--nt-sidebar-bg);
+  --bg-titlebar: var(--nt-titlebar-bg);
+  --bg-panel: var(--nt-panel-bg);
+  --bg-elevated: var(--nt-overlay-bg);
+  --bg-input: var(--nt-overlay-bg);
+  --bg-statusbar: var(--nt-statusbar-bg);
+  --bg-canvas: var(--nt-editor-bg);
+  --bg-surface: var(--nt-sidebar-bg);
+  --bg-surface-2: var(--nt-overlay-bg);
+  --bg-surface-3: var(--nt-tab-inactive-bg);
+  --bg-surface-4: var(--nt-tab-inactive-bg);
+  --bg-hover: var(--nt-hover-bg);
+  --bg-active: var(--nt-active-bg);
+  --bg-selected: var(--nt-selected-bg);
+  --bg-selected-hover: var(--nt-selected-bg);
+  --border-subtle: var(--nt-prim-border);
+  --border-strong: var(--nt-prim-border-strong);
+  --border-focus: var(--nt-focus-border);
+  --text-primary: var(--nt-editor-fg);
+  --text-secondary: var(--nt-prim-fg-muted);
+  --text-muted: var(--nt-prim-fg-muted);
+  --text-disabled: var(--nt-prim-fg-subtle);
+  --text-placeholder: var(--nt-prim-fg-muted);
+  --text-inverse: var(--nt-prim-bg-base);
+  --text-on-error: #ffffff;
+  --text-on-success: #ffffff;
   --text-on-accent: #ffffff;
-  /* DECO-002: Distinct dimmed color for git-ignored files */
-  --color-text-ignored: #888888;
-
-  --icon-default: #000000;
-  --icon-muted: #444444;
-  --icon-active: #000000;
-  --icon-active-tab: #000000;
-
-  --accent: #0078d4;
-  --accent-hover: #006cc1;
-  --accent-active: #005a9e;
-  --indicator-active: #0078d4;
-
-  --scrollbar-thumb: #0078d4;
-  --scrollbar-thumb-hover: #005a9e;
-
-  --color-status-error: #cc0000;
-  --color-status-warning: #9a6700;
-  --color-status-info: #0078d4;
-  --color-status-success: #1a7f37;
-
-  /* Git decoration: Untracked files (teal/green, not info-blue) */
-  --color-untracked: #1a7f37;
-
-  --elevated-shadow-sm:
-    0 1px 2px var(--bg-active);
-  --elevated-shadow:
-    0 4px 12px var(--bg-active),
-    0 1px 3px var(--bg-active);
+  --color-text-ignored: var(--nt-ignored-fg);
+  --icon-default: var(--nt-editor-fg);
+  --icon-muted: var(--nt-prim-fg-subtle);
+  --icon-active: var(--nt-editor-fg);
+  --icon-primary: var(--nt-editor-fg);
+  --icon-secondary: var(--nt-prim-fg-muted);
+  --icon-disabled: var(--nt-prim-fg-subtle);
+  --border-disabled: var(--nt-prim-border);
+  --bg-disabled: var(--nt-active-bg);
+  --icon-active-tab: var(--nt-editor-fg);
+  --accent: var(--nt-prim-accent);
+  --accent-hover: var(--nt-prim-accent);
+  --accent-active: var(--nt-prim-accent);
+  --indicator-inactive: var(--nt-prim-fg-subtle);
+  --indicator-active: var(--nt-activitybar-indicator);
+  --scrollbar-thumb: var(--nt-scrollbar-thumb);
+  --scrollbar-thumb-hover: var(--nt-scrollbar-thumb-hover);
+  --color-status-error: var(--nt-status-error);
+  --color-status-warning: var(--nt-status-warning);
+  --color-status-info: var(--nt-status-info);
+  --color-status-success: var(--nt-status-success);
+  --color-untracked: var(--nt-untracked);
+  --elevated-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --elevated-shadow: var(--nt-overlay-shadow);
 }
+
 
 /* ── Breadcrumb plugin (@fazelstudio/codemirror-breadcrumbs) ───────────────────
    The plugin reads its colors from --cm-breadcrumbs-* variables and falls back
@@ -116,33 +188,33 @@
    theme variables keeps the bar, dropdowns and symbol-kind tints in sync with
    the active theme (any theme, any icon theme). */
 :root {
-  --cm-breadcrumbs-bg: var(--bg-canvas);
-  --cm-breadcrumbs-fg: var(--text-secondary);
-  --cm-breadcrumbs-border: var(--border-subtle);
-  --cm-breadcrumbs-file-fg: var(--text-secondary);
-  --cm-breadcrumbs-hover-bg: var(--bg-hover);
-  --cm-breadcrumbs-focus: var(--border-focus);
-  --cm-breadcrumbs-separator-fg: var(--text-muted);
-  --cm-breadcrumbs-language-fg: var(--accent);
-  --cm-breadcrumbs-dropdown-bg: var(--bg-elevated);
-  --cm-breadcrumbs-dropdown-border: var(--border-subtle);
-  --cm-breadcrumbs-dropdown-title-fg: var(--text-muted);
-  --cm-breadcrumbs-dropdown-hover-bg: var(--bg-selected);
-  --cm-breadcrumbs-kind-file: var(--text-muted);
-  --cm-breadcrumbs-kind-folder: var(--accent);
-  --cm-breadcrumbs-kind-namespace: var(--text-secondary);
-  --cm-breadcrumbs-kind-class: var(--color-status-warning);
-  --cm-breadcrumbs-kind-interface: var(--accent);
-  --cm-breadcrumbs-kind-function: var(--accent-active);
-  --cm-breadcrumbs-kind-method: var(--accent-active);
-  --cm-breadcrumbs-kind-variable: var(--color-status-info);
-  --cm-breadcrumbs-kind-constant: var(--color-status-info);
-  --cm-breadcrumbs-kind-enum: var(--accent-active);
-  --cm-breadcrumbs-kind-property: var(--text-secondary);
-  --cm-breadcrumbs-kind-heading: var(--text-primary);
-  --cm-breadcrumbs-kind-block: var(--text-muted);
-  --cm-breadcrumbs-kind-tag: var(--accent);
-  --cm-breadcrumbs-kind-other: var(--text-muted);
+  --cm-breadcrumbs-bg: var(--nt-editor-bg);
+  --cm-breadcrumbs-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-border: var(--nt-editor-border);
+  --cm-breadcrumbs-file-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-hover-bg: var(--nt-hover-bg);
+  --cm-breadcrumbs-focus: var(--nt-focus-border);
+  --cm-breadcrumbs-separator-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-language-fg: var(--nt-prim-accent);
+  --cm-breadcrumbs-dropdown-bg: var(--nt-overlay-bg);
+  --cm-breadcrumbs-dropdown-border: var(--nt-overlay-border);
+  --cm-breadcrumbs-dropdown-title-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-dropdown-hover-bg: var(--nt-selected-bg);
+  --cm-breadcrumbs-kind-file: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-folder: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-namespace: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-class: var(--nt-status-warning);
+  --cm-breadcrumbs-kind-interface: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-function: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-method: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-variable: var(--nt-status-info);
+  --cm-breadcrumbs-kind-constant: var(--nt-status-info);
+  --cm-breadcrumbs-kind-enum: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-property: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-heading: var(--nt-editor-fg);
+  --cm-breadcrumbs-kind-block: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-tag: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-other: var(--nt-prim-fg-muted);
 }
 
 /* ── Git gutter plugin (@fazelstudio/codemirror-gitgutter) ─────────────────────
@@ -150,137 +222,198 @@
    colors when these variables are missing. Map them to the semantic status
    tokens so added/modified/deleted follow the active theme. */
 :root {
-  --cm-gitgutter-added-color: var(--color-status-success);
-  --cm-gitgutter-modified-color: var(--color-status-warning);
-  --cm-gitgutter-deleted-color: var(--color-status-error);
-  --cm-gitgutter-line-added-bg: color-mix(in srgb, var(--color-status-success) 12%, transparent);
-  --cm-gitgutter-line-modified-bg: color-mix(in srgb, var(--color-status-warning) 12%, transparent);
-  --cm-gitgutter-diff-added-bg: color-mix(in srgb, var(--color-status-success) 22%, transparent);
-  --cm-gitgutter-diff-removed-bg: color-mix(in srgb, var(--color-status-error) 22%, transparent);
-  --cm-gitgutter-peek-border: var(--border-subtle);
-  --cm-gitgutter-peek-label-color: var(--text-secondary);
-  --cm-gitgutter-peek-btn-color: var(--text-secondary);
-  --cm-gitgutter-peek-content-color: var(--text-secondary);
+  --cm-gitgutter-added-color: var(--nt-status-success);
+  --cm-gitgutter-modified-color: var(--nt-status-warning);
+  --cm-gitgutter-deleted-color: var(--nt-status-error);
+  --cm-gitgutter-line-added-bg: color-mix(in srgb, var(--nt-status-success) 12%, transparent);
+  --cm-gitgutter-line-modified-bg: color-mix(in srgb, var(--nt-status-warning) 12%, transparent);
+  --cm-gitgutter-diff-added-bg: color-mix(in srgb, var(--nt-status-success) 22%, transparent);
+  --cm-gitgutter-diff-removed-bg: color-mix(in srgb, var(--nt-status-error) 22%, transparent);
+  --cm-gitgutter-peek-border: var(--nt-editor-border);
+  --cm-gitgutter-peek-label-color: var(--nt-prim-fg-muted);
+  --cm-gitgutter-peek-btn-color: var(--nt-prim-fg-muted);
+  --cm-gitgutter-peek-content-color: var(--nt-prim-fg-muted);
 }
 
 /* ── Sticky scroll plugin (@fazelstudio/codemirror-stickyscroll) ──────────────
    Same pattern: the sticky header bar falls back to hardcoded grays when these
    variables are missing. Map them onto the theme tokens. */
 :root {
-  --cm-stickyscroll-bg: var(--bg-surface-2);
-  --cm-stickyscroll-hoverBg: var(--bg-hover);
-  --cm-stickyscroll-currentBg: var(--bg-hover);
-  --cm-stickyscroll-accent: var(--accent);
-  --cm-stickyscroll-border: var(--border-subtle);
-  --cm-stickyscroll-gutterBorder: var(--border-subtle);
+  --cm-stickyscroll-bg: var(--nt-editor-bg);
+  --cm-stickyscroll-hoverBg: var(--nt-hover-bg);
+  --cm-stickyscroll-currentBg: var(--nt-editor-line-highlight);
+  --cm-stickyscroll-accent: var(--nt-prim-accent);
+  --cm-stickyscroll-border: var(--nt-editor-border);
+  --cm-stickyscroll-gutterBorder: var(--nt-editor-border);
 }
 
-/* ── High Contrast Dark (.dark) ────────────────────────────────────────────────
-   Pure black (#000000) bg, white text, blue (#6fc3df) accent — VSCode HC Dark */
-.dark {
-  --bg-canvas: #000000;
-  --bg-surface: #000000;
-  --bg-surface-2: #000000;
-  --bg-surface-3: #111111;
-  --bg-surface-4: #1a1a1a;
-  --bg-elevated: #000000;
-
-  --bg-hover: #1a1a1a;
-  --bg-active: #333333;
-  --bg-selected: #0078d4;
-  --bg-selected-hover: #006cc1;
-
-  --border-subtle: #6fc3df;
-  --border-strong: #0078d4;
-  --border-focus: #0078d4;
-
-  --text-primary: #ffffff;
-  --text-secondary: #ffffff;
-  --text-muted: #cccccc;
-  --text-inverse: #000000;
+/* Legacy dark defaults are retained only as documentation; Theme Bridge owns
+   runtime values for every theme and injects them on the document root. */
+.dark-legacy-disabled {
+  --nt-prim-bg-base: #1e1e1e;
+  --nt-prim-bg-elevated: #252526;
+  --nt-prim-fg-base: #ffffff;
+  --nt-prim-fg-muted: rgba(255, 255, 255, 0.60);
+  --nt-prim-fg-subtle: rgba(255, 255, 255, 0.45);
+  --nt-prim-accent: #0078d4;
+  --nt-prim-border: rgba(255, 255, 255, 0.15);
+  --nt-prim-border-strong: rgba(255, 255, 255, 0.30);
+  --nt-prim-selection: #0078d4;
+  --nt-prim-cursor: #0078d4;
+  --nt-prim-line-highlight: #1e1e1e;
+  --nt-titlebar-bg: #1a1a1a;
+  --nt-titlebar-fg: #ffffff;
+  --nt-titlebar-border: rgba(255, 255, 255, 0.15);
+  --nt-activitybar-bg: #252526;
+  --nt-activitybar-fg: rgba(255, 255, 255, 0.60);
+  --nt-activitybar-fg-active: #ffffff;
+  --nt-activitybar-indicator: #0078d4;
+  --nt-activitybar-border: rgba(255, 255, 255, 0.15);
+  --nt-sidebar-bg: #252526;
+  --nt-sidebar-fg: #ffffff;
+  --nt-sidebar-header-bg: #252526;
+  --nt-sidebar-border: rgba(255, 255, 255, 0.15);
+  --nt-editor-bg: #1e1e1e;
+  --nt-editor-fg: #ffffff;
+  --nt-editor-gutter-fg: rgba(255, 255, 255, 0.45);
+  --nt-editor-line-highlight: #1e1e1e;
+  --nt-editor-selection: #0078d4;
+  --nt-editor-cursor: #0078d4;
+  --nt-editor-border: rgba(255, 255, 255, 0.15);
+  --nt-tabbar-bg: #252526;
+  --nt-tab-active-bg: #1e1e1e;
+  --nt-tab-inactive-bg: #252526;
+  --nt-tab-border: rgba(255, 255, 255, 0.15);
+  --nt-tab-active-border: #0078d4;
+  --nt-statusbar-bg: #1a1a1a;
+  --nt-statusbar-fg: #ffffff;
+  --nt-statusbar-border: rgba(255, 255, 255, 0.15);
+  --nt-panel-bg: #252526;
+  --nt-panel-fg: #ffffff;
+  --nt-panel-border: rgba(255, 255, 255, 0.15);
+  --nt-overlay-bg: #252526;
+  --nt-overlay-fg: #ffffff;
+  --nt-overlay-border: rgba(255, 255, 255, 0.15);
+  --nt-overlay-shadow: 0 4px 12px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --nt-hover-bg: rgba(255, 255, 255, 0.10);
+  --nt-active-bg: rgba(255, 255, 255, 0.20);
+  --nt-selected-bg: #0078d4;
+  --nt-scrollbar-thumb: rgba(255, 255, 255, 0.35);
+  --nt-scrollbar-thumb-hover: rgba(255, 255, 255, 0.50);
+  --nt-focus-border: #0078d4;
+  --nt-status-error: #f14c4c;
+  --nt-status-warning: #cca700;
+  --nt-status-info: #3794ff;
+  --nt-status-success: #3fb950;
+  --nt-untracked: #3fb950;
+  --nt-ignored-fg: rgba(255, 255, 255, 0.45);
+  --nt-badge-bg: #0078d4;
+  --nt-badge-fg: #ffffff;
+  --bg-editor: var(--nt-editor-bg);
+  --bg-sidebar: var(--nt-sidebar-bg);
+  --bg-titlebar: var(--nt-titlebar-bg);
+  --bg-panel: var(--nt-panel-bg);
+  --bg-elevated: var(--nt-overlay-bg);
+  --bg-input: var(--nt-overlay-bg);
+  --bg-statusbar: var(--nt-statusbar-bg);
+  --bg-canvas: var(--nt-editor-bg);
+  --bg-surface: var(--nt-sidebar-bg);
+  --bg-surface-2: var(--nt-overlay-bg);
+  --bg-surface-3: var(--nt-tab-inactive-bg);
+  --bg-surface-4: var(--nt-tab-inactive-bg);
+  --bg-hover: var(--nt-hover-bg);
+  --bg-active: var(--nt-active-bg);
+  --bg-selected: var(--nt-selected-bg);
+  --bg-selected-hover: var(--nt-selected-bg);
+  --border-subtle: var(--nt-prim-border);
+  --border-strong: var(--nt-prim-border-strong);
+  --border-focus: var(--nt-focus-border);
+  --text-primary: var(--nt-editor-fg);
+  --text-secondary: var(--nt-prim-fg-muted);
+  --text-muted: var(--nt-prim-fg-muted);
+  --text-disabled: var(--nt-prim-fg-subtle);
+  --text-placeholder: var(--nt-prim-fg-muted);
+  --text-inverse: var(--nt-prim-bg-base);
+  --text-on-error: #ffffff;
+  --text-on-success: #ffffff;
   --text-on-accent: #ffffff;
-  /* DECO-002: Distinct dimmed color for git-ignored files */
-  --color-text-ignored: #555555;
-
-  --icon-default: #ffffff;
-  --icon-muted: #cccccc;
-  --icon-active: #ffffff;
-  --icon-active-tab: #ffffff;
-
-  --accent: #6fc3df;
-  --accent-hover: #5ab3d0;
-  --accent-active: #4aa3c1;
-  --indicator-active: #6fc3df;
-
-  --scrollbar-thumb: #6fc3df;
-  --scrollbar-thumb-hover: #0078d4;
-
-  --color-status-error: #ff6b6b;
-  --color-status-warning: #d29922;
-  --color-status-info: #3794ff;
-  --color-status-success: #3fb950;
-
-  /* Git decoration: Untracked files (teal/green, not info-blue) */
-  --color-untracked: #3fb950;
-
-  --elevated-shadow-sm:
-    0 1px 2px var(--bg-active);
-  --elevated-shadow:
-    0 4px 12px var(--bg-active),
-    0 1px 3px var(--bg-active);
+  --color-text-ignored: var(--nt-ignored-fg);
+  --icon-default: var(--nt-editor-fg);
+  --icon-muted: var(--nt-prim-fg-subtle);
+  --icon-active: var(--nt-editor-fg);
+  --icon-primary: var(--nt-editor-fg);
+  --icon-secondary: var(--nt-prim-fg-muted);
+  --icon-disabled: var(--nt-prim-fg-subtle);
+  --icon-active-tab: var(--nt-editor-fg);
+  --border-disabled: var(--nt-prim-border);
+  --bg-disabled: var(--nt-active-bg);
+  --accent: var(--nt-prim-accent);
+  --accent-hover: var(--nt-prim-accent);
+  --accent-active: var(--nt-prim-accent);
+  --indicator-active: var(--nt-activitybar-indicator);
+  --indicator-inactive: var(--nt-prim-fg-subtle);
+  --scrollbar-thumb: var(--nt-scrollbar-thumb);
+  --scrollbar-thumb-hover: var(--nt-scrollbar-thumb-hover);
+  --color-status-error: var(--nt-status-error);
+  --color-status-warning: var(--nt-status-warning);
+  --color-status-info: var(--nt-status-info);
+  --color-status-success: var(--nt-status-success);
+  --color-untracked: var(--nt-untracked);
+  --elevated-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --elevated-shadow: var(--nt-overlay-shadow);
 }
 
-.dark {
-  --cm-breadcrumbs-bg: var(--bg-canvas);
-  --cm-breadcrumbs-fg: var(--text-secondary);
-  --cm-breadcrumbs-border: var(--border-subtle);
-  --cm-breadcrumbs-file-fg: var(--text-secondary);
-  --cm-breadcrumbs-hover-bg: var(--bg-hover);
-  --cm-breadcrumbs-focus: var(--border-focus);
-  --cm-breadcrumbs-separator-fg: var(--text-muted);
-  --cm-breadcrumbs-language-fg: var(--accent);
-  --cm-breadcrumbs-dropdown-bg: var(--bg-elevated);
-  --cm-breadcrumbs-dropdown-border: var(--border-subtle);
-  --cm-breadcrumbs-dropdown-title-fg: var(--text-muted);
-  --cm-breadcrumbs-dropdown-hover-bg: var(--bg-selected);
-  --cm-breadcrumbs-kind-file: var(--text-muted);
-  --cm-breadcrumbs-kind-folder: var(--accent);
-  --cm-breadcrumbs-kind-namespace: var(--text-secondary);
-  --cm-breadcrumbs-kind-class: var(--color-status-warning);
-  --cm-breadcrumbs-kind-interface: var(--accent);
-  --cm-breadcrumbs-kind-function: var(--accent-active);
-  --cm-breadcrumbs-kind-method: var(--accent-active);
-  --cm-breadcrumbs-kind-variable: var(--color-status-info);
-  --cm-breadcrumbs-kind-constant: var(--color-status-info);
-  --cm-breadcrumbs-kind-enum: var(--accent-active);
-  --cm-breadcrumbs-kind-property: var(--text-secondary);
-  --cm-breadcrumbs-kind-heading: var(--text-primary);
-  --cm-breadcrumbs-kind-block: var(--text-muted);
-  --cm-breadcrumbs-kind-tag: var(--accent);
-  --cm-breadcrumbs-kind-other: var(--text-muted);
+:root {
+  --cm-breadcrumbs-bg: var(--nt-editor-bg);
+  --cm-breadcrumbs-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-border: var(--nt-editor-border);
+  --cm-breadcrumbs-file-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-hover-bg: var(--nt-hover-bg);
+  --cm-breadcrumbs-focus: var(--nt-focus-border);
+  --cm-breadcrumbs-separator-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-language-fg: var(--nt-prim-accent);
+  --cm-breadcrumbs-dropdown-bg: var(--nt-overlay-bg);
+  --cm-breadcrumbs-dropdown-border: var(--nt-overlay-border);
+  --cm-breadcrumbs-dropdown-title-fg: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-dropdown-hover-bg: var(--nt-selected-bg);
+  --cm-breadcrumbs-kind-file: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-folder: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-namespace: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-class: var(--nt-status-warning);
+  --cm-breadcrumbs-kind-interface: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-function: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-method: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-variable: var(--nt-status-info);
+  --cm-breadcrumbs-kind-constant: var(--nt-status-info);
+  --cm-breadcrumbs-kind-enum: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-property: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-heading: var(--nt-editor-fg);
+  --cm-breadcrumbs-kind-block: var(--nt-prim-fg-muted);
+  --cm-breadcrumbs-kind-tag: var(--nt-prim-accent);
+  --cm-breadcrumbs-kind-other: var(--nt-prim-fg-muted);
 }
 
-.dark {
-  --cm-gitgutter-added-color: var(--color-status-success);
-  --cm-gitgutter-modified-color: var(--color-status-warning);
-  --cm-gitgutter-deleted-color: var(--color-status-error);
-  --cm-gitgutter-line-added-bg: color-mix(in srgb, var(--color-status-success) 12%, transparent);
-  --cm-gitgutter-line-modified-bg: color-mix(in srgb, var(--color-status-warning) 12%, transparent);
-  --cm-gitgutter-diff-added-bg: color-mix(in srgb, var(--color-status-success) 22%, transparent);
-  --cm-gitgutter-diff-removed-bg: color-mix(in srgb, var(--color-status-error) 22%, transparent);
-  --cm-gitgutter-peek-border: var(--border-subtle);
-  --cm-gitgutter-peek-label-color: var(--text-secondary);
-  --cm-gitgutter-peek-btn-color: var(--text-secondary);
-  --cm-gitgutter-peek-content-color: var(--text-secondary);
+:root {
+  --cm-gitgutter-added-color: var(--nt-status-success);
+  --cm-gitgutter-modified-color: var(--nt-status-warning);
+  --cm-gitgutter-deleted-color: var(--nt-status-error);
+  --cm-gitgutter-line-added-bg: color-mix(in srgb, var(--nt-status-success) 12%, transparent);
+  --cm-gitgutter-line-modified-bg: color-mix(in srgb, var(--nt-status-warning) 12%, transparent);
+  --cm-gitgutter-diff-added-bg: color-mix(in srgb, var(--nt-status-success) 22%, transparent);
+  --cm-gitgutter-diff-removed-bg: color-mix(in srgb, var(--nt-status-error) 22%, transparent);
+  --cm-gitgutter-peek-border: var(--nt-editor-border);
+  --cm-gitgutter-peek-label-color: var(--nt-prim-fg-muted);
+  --cm-gitgutter-peek-btn-color: var(--nt-prim-fg-muted);
+  --cm-gitgutter-peek-content-color: var(--nt-prim-fg-muted);
 }
 
-.dark {
-  --cm-stickyscroll-bg: var(--bg-surface-2);
-  --cm-stickyscroll-hoverBg: var(--bg-hover);
-  --cm-stickyscroll-currentBg: var(--bg-hover);
-  --cm-stickyscroll-accent: var(--accent);
-  --cm-stickyscroll-border: var(--border-subtle);
-  --cm-stickyscroll-gutterBorder: var(--border-subtle);
+:root {
+  --cm-stickyscroll-bg: var(--nt-editor-bg);
+  --cm-stickyscroll-hoverBg: var(--nt-hover-bg);
+  --cm-stickyscroll-currentBg: var(--nt-editor-line-highlight);
+  --cm-stickyscroll-accent: var(--nt-prim-accent);
+  --cm-stickyscroll-border: var(--nt-editor-border);
+  --cm-stickyscroll-gutterBorder: var(--nt-editor-border);
 }
 
 /* ── CodeMirror overrides ────────────────────────────────────────────────────── */
@@ -300,9 +433,9 @@
   right: 8px;
   padding: 4px;
   border-radius: 4px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-surface-2);
-  color: var(--text-muted);
+  border: 1px solid var(--nt-editor-border);
+  background: var(--nt-overlay-bg);
+  color: var(--nt-prim-fg-muted);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s, color 0.15s, background 0.15s;
@@ -315,17 +448,17 @@
   opacity: 1;
 }
 .md-copy-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--nt-hover-bg);
+  color: var(--nt-editor-fg);
 }
 .md-copy-btn.md-copied {
-  color: var(--color-success, #4ade80);
+  color: var(--nt-status-success);
   opacity: 1;
 }
 
 body {
-  background-color: var(--bg-canvas);
-  color: var(--text-primary);
+  background-color: var(--nt-editor-bg);
+  color: var(--nt-editor-fg);
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -347,7 +480,7 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
 }
 
 ::selection {
-  background-color: var(--bg-selected);
+  background-color: var(--nt-selected-bg);
   color: inherit;
 }
 
@@ -355,6 +488,15 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
   button, [role="button"], [role="menuitem"], [role="tab"] {
     background-color: transparent;
     cursor: pointer;
+  *:focus-visible {
+    outline: 1px solid var(--nt-focus-border);
+    outline-offset: 1px;
+  }
+  button:disabled, [role="button"]:disabled, input:disabled, textarea:disabled, select:disabled {
+    color: var(--nt-prim-fg-subtle);
+    border-color: var(--nt-prim-border);
+    cursor: not-allowed;
+  }
   }
 }
 
@@ -366,10 +508,10 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--nt-scrollbar-thumb);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  background: var(--nt-scrollbar-thumb-hover);
 }
 
 .cm-minimap-container {
@@ -383,28 +525,28 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
   overflow: hidden;
   pointer-events: auto;
   z-index: 10 !important;
-  background-color: var(--bg-canvas) !important;
-  border-left: 1px solid var(--border-subtle);
+  background-color: var(--nt-editor-bg) !important;
+  border-left: 1px solid var(--nt-editor-border);
 }
 
 .cm-scroller::-webkit-scrollbar-thumb {
   background: transparent;
 }
 .cm-editor:hover .cm-scroller::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--nt-scrollbar-thumb);
 }
 .cm-editor:hover .cm-scroller::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  background: var(--nt-scrollbar-thumb-hover);
 }
 
 .hover-scrollbar::-webkit-scrollbar-thumb {
   background: transparent;
 }
 .hover-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background: var(--nt-scrollbar-thumb);
 }
 .hover-scrollbar:hover::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  background: var(--nt-scrollbar-thumb-hover);
 }
 .hover-scrollbar {
   overflow-y: overlay !important;
@@ -441,4 +583,24 @@ body.is-dragging [data-node-path]:not(.drop-valid) {
 
 .editor-container.icon-theme-off .cm-breadcrumbs-segment > svg {
   display: none;
+}
+
+/* High-contrast surfaces intentionally collapse to one black/white canvas.
+   Borders remain the only region separators, matching VS Code HC behavior. */
+html[data-nt-high-contrast="true"] body,
+html[data-nt-high-contrast="true"] #root,
+html[data-nt-high-contrast="true"] .pane-container,
+html[data-nt-high-contrast="true"] .pane-tabs,
+html[data-nt-high-contrast="true"] .cm-editor,
+html[data-nt-high-contrast="true"] .cm-scroller,
+html[data-nt-high-contrast="true"] .cm-content,
+html[data-nt-high-contrast="true"] .cm-gutters,
+html[data-nt-high-contrast="true"] .cm-minimap-container,
+html[data-nt-high-contrast="true"] .cm-breadcrumbs {
+  background-color: var(--nt-editor-bg) !important;
+  color: var(--nt-editor-fg);
+}
+
+html[data-nt-high-contrast="true"] .cm-breadcrumbs {
+  border-bottom-color: var(--nt-editor-border) !important;
 }

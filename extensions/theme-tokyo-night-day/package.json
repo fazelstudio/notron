@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-tokyo-night-day",
+  "name": "theme-tokyo-night-day",
+  "displayName": "Tokyo Night Day",
+  "description": "Tokyo Night Day theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "tokyo-night-day",
+        "label": "Tokyo Night Day",
+        "uiTheme": "light",
+        "path": "./themes/tokyo-night-day.ts"
+      }
+    ]
+  }
+}

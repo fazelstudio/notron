@@ -1,0 +1,43 @@
+{
+  "id": "acme.markdown-preview",
+  "name": "markdown-preview",
+  "displayName": "Markdown Preview",
+  "description": "Smoke test Fase 3 languages + menus + theming — markdown hover provider, diagnostic collection, preview toggle.",
+  "version": "0.1.0",
+  "publisher": "acme",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onLanguage:markdown", "onCommand:acme.markdownPreview.toggle", "onStartupFinished"],
+  "contributes": {
+    "commands": [
+      { "command": "acme.markdownPreview.toggle", "title": "Toggle Markdown Preview", "category": "Markdown" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "acme.markdownPreview.toggle", "group": "navigation", "when": "editorTextFocus && resourceExtname == .md" }
+      ],
+      "commandPalette": [
+        { "command": "acme.markdownPreview.toggle", "when": "resourceExtname == .md" }
+      ]
+    },
+    "languages": [
+      { "id": "markdown-preview-demo", "extensions": [".mdp"], "aliases": ["Markdown Preview Demo"] }
+    ],
+    "grammars": [
+      { "language": "markdown-preview-demo", "scopeName": "source.mdp", "path": "./syntaxes/mdp.tmLanguage.json" }
+    ],
+    "themes": [
+      { "id": "acme.preview-dark", "label": "Preview Dark", "uiTheme": "dark", "path": "./themes/preview-dark.json" }
+    ],
+    "configuration": {
+      "title": "Markdown Preview",
+      "properties": {
+        "markdownPreview.autoRefresh": { "type": "boolean", "default": true, "description": "Auto refresh preview on save" },
+        "markdownPreview.theme": { "type": "string", "default": "github", "description": "Preview theme", "enum": ["github", "dark"] }
+      }
+    }
+  },
+  "permissions": ["fs:workspace-read"]
+}

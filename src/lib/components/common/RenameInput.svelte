@@ -1,6 +1,6 @@
 <!-- svelte-ignore state_referenced_locally -->
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import { fileService } from '../../services/fileService';
   import { uiStore } from '../../stores/ui';
   
   let { initialName, node, depth }: { initialName: string; node: any; depth: number } = $props();
@@ -25,7 +25,7 @@
         const sep = node.path.includes('\\') ? '\\' : '/';
         const parts = node.path.split(sep); parts.pop();
         const newPath = [...parts, val.trim()].join(sep);
-        await uiStore.withStatus(`Renaming to ${val.trim()}...`, invoke('rename_item', { oldPath: node.path, newPath }), 500);
+        await uiStore.withStatus(`Renaming to ${val.trim()}...`, fileService.renameItem(node.path, newPath), 500);
         uiStore.triggerExplorerRefresh();
         uiStore.setRenamingItem(null);
       } catch (err) { alert(err); }
@@ -44,5 +44,5 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
     {/if}
   </span>
-  <input bind:this={inputEl} bind:value={val} onkeydown={handleKeydown} onblur={() => uiStore.setRenamingItem(null)} class="flex-1 border outline-none text-xs px-1 py-0.5 rounded-sm bg-canvas border-focus text-primary" />
+  <input bind:this={inputEl} bind:value={val} onkeydown={handleKeydown} onblur={() => uiStore.setRenamingItem(null)} class="flex-1 border outline-none text-xs px-1 py-0.5 rounded-sm bg-input border-focus text-primary" />
 </div>

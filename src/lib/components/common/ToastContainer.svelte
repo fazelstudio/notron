@@ -18,7 +18,7 @@
     <div 
       in:fly={{ y: 20, duration: 300 }} 
       out:fade={{ duration: 200 }}
-      class="pointer-events-auto rounded-md shadow-elevated border border-subtle bg-surface-2 p-3 relative flex flex-col transition-all"
+      class="pointer-events-auto rounded-md shadow-elevated border border-subtle bg-elevated p-3 relative flex flex-col transition-all"
     >
       {#if toast.type !== 'process'}
         <button 

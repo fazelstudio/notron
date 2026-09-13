@@ -6,17 +6,13 @@
   import { ChevronDown, Play, Square } from 'lucide-svelte';
 
   const activeTabIdStore = editorStore.activeTabId;
+  import { commandRegistry } from '../../commands/registry';
   import DropdownMenu, { type DropdownMenuItem } from '../common/DropdownMenu.svelte';
   import {
-    createLaunchJsonFile,
     hasLaunchJson,
     getRunPreview,
-    openFileForRunning,
-    openLaunchJson,
     refreshRunConfigurations,
-    runSelectedConfiguration,
     saveResolvedEntryAsConfig,
-    stopActiveRuns,
     activeRunTerminalIds
   } from '../../services/runService';
 
@@ -60,7 +56,7 @@
   let launchJsonExists = $state(false);
 
   // Keep the configuration list in sync with the active editor file so the
-  // "Current File" entry never goes stale (VS Code recomputes continuously).
+  // "Current File" entry never goes stale (the editor recomputes continuously).
   let lastRefreshKey = $state<string>('');
   $effect(() => {
     const key = `${$uiStore.explorerRoot}|${$activeTabIdStore}`;
@@ -86,11 +82,11 @@
   }
 
   function run() {
-    runSelectedConfiguration();
+    void commandRegistry.execute('workbench.action.run');
   }
 
   function stop() {
-    stopActiveRuns();
+    void commandRegistry.execute('workbench.action.stopRun');
   }
 </script>
 
@@ -106,7 +102,7 @@
           <DropdownMenu items={configMenuItems} class="w-full" align="right" matchWidth>
             {#snippet trigger()}
               <div
-                class="w-full h-6 bg-surface-2 border border-subtle text-[12px] text-primary outline-none px-2 rounded-sm hover:border-accent focus:border-accent flex items-center justify-between cursor-pointer"
+                class="w-full h-6 bg-panel-2 border border-subtle text-[12px] text-primary outline-none px-2 rounded-sm hover:border-accent focus:border-accent flex items-center justify-between cursor-pointer"
               >
                 <span class="truncate">
                   {selectedConfig ? selectedConfig.name : 'No Configurations'}
@@ -127,7 +123,7 @@
             </button>
             {#if isRunning()}
               <button
-                class="flex items-center justify-center gap-1.5 w-16 h-7 border border-subtle bg-surface-2 hover:bg-hover hover:border-error text-[12px] rounded-sm transition-colors"
+                class="flex items-center justify-center gap-1.5 w-16 h-7 border border-subtle bg-panel-2 hover:bg-hover hover:border-error text-[12px] rounded-sm transition-colors"
                 onclick={stop}
                 title="Stop all runs started from Notron"
               >
@@ -139,7 +135,7 @@
 
           {#if preview}
             <div
-              class="px-2 py-1.5 bg-surface border border-subtle rounded-sm text-[10.5px] leading-snug text-muted break-all whitespace-pre-wrap max-h-20 overflow-y-auto hover-scrollbar"
+              class="px-2 py-1.5 bg-panel border border-subtle rounded-sm text-[10.5px] leading-snug text-muted break-all whitespace-pre-wrap max-h-20 overflow-y-auto hover-scrollbar"
               title="Command preview"
             >
               {preview}
@@ -159,16 +155,16 @@
 
           <div class="space-y-4">
             <p class="text-[12px] text-secondary leading-snug">
-              <button class="link-button" onclick={openFileForRunning}>Open a file</button> which can be run.
+              <button class="link-button" onclick={() => commandRegistry.execute('run.openFileForRunning')}>Open a file</button> which can be run.
             </p>
 
             <p class="text-[12px] text-secondary leading-snug">
-              To customize Run <button class="link-button" onclick={createLaunchJsonFile}>create a launch.json file</button>.
+              To customize Run <button class="link-button" onclick={() => commandRegistry.execute('run.createLaunchJson')}>create a launch.json file</button>.
             </p>
 
             {#if launchJsonExists}
               <p class="text-[12px] text-secondary leading-snug">
-                <button class="link-button" onclick={openLaunchJson}>Open launch.json</button>.
+                <button class="link-button" onclick={() => commandRegistry.execute('run.openLaunchJson')}>Open launch.json</button>.
               </p>
             {/if}
 

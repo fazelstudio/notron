@@ -1,3 +1,6 @@
+// Ignore Rules
+//
+// Rust module.
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;

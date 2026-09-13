@@ -1,0 +1,11 @@
+import { basicLight, defaultSettingsBasicLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "basic-light";
+export const label = "Basic Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = basicLight;
+export const settings = defaultSettingsBasicLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/basic-light.ts" });

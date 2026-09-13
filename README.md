@@ -87,14 +87,18 @@ bun run tauri build  # produces native binaries in src-tauri/target/release
 
 ```
 src/                  Svelte 5 frontend
-  lib/components/     UI components (Editor, FileTree, Terminal, etc.)
-  lib/services/       Services (git, DAP client)
-  lib/stores/         Svelte stores / runes
-  lib/utils/          Utilities (explorer, symbol engine, language detector)
+  lib/commands/       Command & keybinding registries
+  lib/workbench/      Shell registries (activity bar, sidebar, status bar, menus, preview)
+  lib/components/     UI (shell, editor, explorer, panels, common)
+  lib/contrib/        Built-in features (explorer, search, scm, terminal, editor)
+  lib/services/       Services (git, run, file, notification, session)
+  lib/stores/         Stores (editor, split, terminal, ui, settings)
+  lib/utils/          Helpers (path, explorer, symbol engine, eventBus)
+  lib/platform/       IPC catalog & keybinding service
+  lib/sdk/            Extension API types
 src-tauri/            Rust backend (Tauri)
   src/                Commands and services (db, search, watcher, git, debug)
 public/               Static assets
-reports/              Module development reports
 ```
 
 ## 🤝 Contributing

@@ -1,0 +1,22 @@
+{
+  "name": "hello-world",
+  "displayName": "Hello World",
+  "description": "Hello world extension for Notron",
+  "version": "0.1.0",
+  "publisher": "acme",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "notron-sdk build",
+    "watch": "notron-sdk build --watch",
+    "package": "notron-sdk package",
+    "validate": "notron-sdk validate"
+  },
+  "dependencies": {
+    "notron-sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "esbuild": "^0.25.0"
+  }
+}

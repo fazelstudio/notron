@@ -37,7 +37,7 @@
   });
 
   // Ctrl+H (or the Replace menu) opens the widget in replace mode: expand the
-  // replace row and focus it, mirroring VSCode's "Replace" (Ctrl+H) command.
+  // replace row and focus it, mirroring the editor's "Replace" (Ctrl+H) command.
   $effect(() => {
     mode;
     if (mode === 'replace') {
@@ -168,7 +168,7 @@
       selection: { anchor: m.from, head: m.from + insert.length },
     });
     // The doc change recomputes matches and re-picks the match after the
-    // replaced range; select it visually (VSCode "replace + advance" behavior).
+    // replaced range; select it visually (the editor "replace + advance" behavior).
     requestAnimationFrame(() => {
       if (currentMatchIndex >= 0 && currentMatchIndex < matches.length) {
         selectMatch(currentMatchIndex);

@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-monokai",
+  "name": "theme-monokai",
+  "displayName": "Monokai",
+  "description": "Monokai theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "monokai",
+        "label": "Monokai",
+        "uiTheme": "dark",
+        "path": "./themes/monokai.ts"
+      }
+    ]
+  }
+}

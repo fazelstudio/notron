@@ -1,7 +1,7 @@
 /**
  * Settings store.
  *
- * Two scopes are layered like VSCode:
+ * Two scopes are layered like the editor:
  *  - User (global): saved via `save_global_setting`, applies to every workspace.
  *  - Workspace: saved via `save_workspace_setting`, overrides the user scope
  *    for the current workspace only.
@@ -23,7 +23,7 @@ export interface AppSettings {
   auto_save: boolean;
   auto_save_delay_ms: number;
   default_encoding: string;
-  icon_theme: 'off' | 'default' | 'material';
+  icon_theme: string;
   search_exclude: string[];
   search_include: string[];
   default_svg_view: 'image' | 'code' | 'split';
@@ -118,7 +118,7 @@ class SettingsStore {
     this.scheduleSave(key as string, value, scope);
   }
 
-  // Search include/exclude pattern lists (Layer 2 of the search config).
+  // Search include/exclude lists (Layer 2 of the search config).
   private updatePatternList(
     field: 'search_exclude' | 'search_include',
     pattern: string,

@@ -1,0 +1,23 @@
+{
+  "id": "notron.theme-notron-dark",
+  "name": "theme-notron-dark",
+  "displayName": "Notron Dark",
+  "description": "Notron Dark theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": ["*"],
+  "contributes": {
+    "themes": [
+      {
+        "id": "notron-dark",
+        "label": "Notron Dark",
+        "uiTheme": "dark",
+        "path": "./themes/notron-dark.ts"
+      }
+    ]
+  }
+}

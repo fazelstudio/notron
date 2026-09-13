@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-white-light",
+  "name": "theme-white-light",
+  "displayName": "White Light",
+  "description": "White Light theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "white-light",
+        "label": "White Light",
+        "uiTheme": "light",
+        "path": "./themes/white-light.ts"
+      }
+    ]
+  }
+}

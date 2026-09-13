@@ -1,3 +1,9 @@
+/**
+ * Symbol Engine
+ *
+ * Utility helpers for symbol engine.
+ */
+
 import { invoke } from '@tauri-apps/api/core';
 
 export interface SymbolLocation {

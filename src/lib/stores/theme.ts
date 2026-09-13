@@ -1,7 +1,14 @@
+/**
+ * Theme
+ *
+ * State store for theme.
+ */
+
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
-import { applyThemeVariables, THEMES } from '../themes';
+import { THEMES } from '../theme/registry';
 import { THEME_KEY, SYSTEM_THEME } from '../constants';
+import { applyNtTheme } from '../theme/theme-bridge';
 
 function getSystemTheme(): boolean {
   if (typeof window === 'undefined') return true;
@@ -12,9 +19,6 @@ function loadTheme(): string {
   if (typeof window === 'undefined') return SYSTEM_THEME;
   try {
     const t = localStorage.getItem(THEME_KEY) || SYSTEM_THEME;
-    // Legacy values stored before named themes existed.
-    if (t === 'light') return 'vscode-light';
-    if (t === 'dark') return 'vscode-dark';
     return t;
   } catch {
     return SYSTEM_THEME;
@@ -32,14 +36,12 @@ function applyThemeToDom(theme: string, isDark: boolean) {
   if (typeof window === 'undefined') return;
   const html = document.documentElement;
   html.classList.toggle('dark', isDark);
-  html.classList.toggle('hc-dark', theme === 'hc-dark');
-  html.classList.toggle('hc-light', theme === 'hc-light');
-  applyThemeVariables(theme);
+  applyNtTheme(theme);
 }
 
 let themeState = { theme: loadTheme(), isDark: computeIsDark(loadTheme()) };
 if (typeof window !== 'undefined') {
-  applyThemeVariables(themeState.theme);
+  applyNtTheme(themeState.theme);
 }
 
 function createThemeStore(): Readable<{ theme: string; isDark: boolean }> & { setTheme: (theme: string) => void } {

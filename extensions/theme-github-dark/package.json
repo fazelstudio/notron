@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-github-dark",
+  "name": "theme-github-dark",
+  "displayName": "GitHub Dark",
+  "description": "GitHub Dark theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "github-dark",
+        "label": "GitHub Dark",
+        "uiTheme": "dark",
+        "path": "./themes/github-dark.ts"
+      }
+    ]
+  }
+}

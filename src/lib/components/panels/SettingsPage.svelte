@@ -10,11 +10,13 @@
     FolderTree,
     SquareTerminal,
   } from 'lucide-svelte';
+  import { settingsRegistry } from '../../workbench/settingsRegistry';
   import { settingsStore } from '../../stores/settings.svelte';
   import { themeStore } from '../../stores/theme';
   import { uiStore } from '../../stores/ui';
   import { terminalStore } from '../../stores/terminal';
-  import { THEMES } from '../../themes';
+  import { __getContributedIconThemes } from '../../../../packages/notron-sdk/src/api/theming';
+  import { getThemeOptions } from '../../theme/registry';
   import {
     MIN_SIDEBAR_WIDTH,
     MAX_SIDEBAR_WIDTH,
@@ -30,7 +32,7 @@
   let searchQuery = $state('');
   let searchInputEl: HTMLInputElement | undefined = $state();
 
-  // Settings currently overridden for this workspace (VS Code style):
+  // Settings currently overridden for this workspace (the editor style):
   // rows carrying a workspace value show a badge + "reset to user" action.
   const workspaceOverrides = $derived(new Set(Object.keys(settingsStore.rawWorkspaceSettings)));
 
@@ -79,31 +81,13 @@
     rows: RowDef[];
   }
 
-  const sections: SectionDef[] = [
+  const baseSections: SectionDef[] = [
     {
       id: 'general',
       label: 'General',
       description: 'Application-wide behavior, integrations and default document views.',
       icon: SlidersHorizontal,
       rows: [
-        {
-          id: 'discordPresence',
-          type: 'toggle',
-          key: 'discord_presence',
-          label: 'Discord Presence',
-          description: 'Show your coding activity on your Discord profile.',
-          get: () => settingsStore.effectiveSettings.discord_presence,
-          set: (v) => handleSave('discord_presence', v),
-        },
-        {
-          id: 'confirmDelete',
-          type: 'toggle',
-          key: 'confirm_delete',
-          label: 'Confirm Before Delete',
-          description: 'Show a confirmation dialog before deleting files or folders.',
-          get: () => settingsStore.effectiveSettings.confirm_delete,
-          set: (v) => handleSave('confirm_delete', v),
-        },
         {
           id: 'defaultSvgView',
           type: 'select',
@@ -146,10 +130,10 @@
           key: 'theme',
           label: 'Theme',
           description: 'Controls the overall color scheme of the application.',
-          options: [
-            { value: 'system', label: 'System Default' },
-            ...Object.entries(THEMES).map(([k, v]) => ({ value: k, label: v.label })),
-          ],
+          options: (() => {
+            const opts = getThemeOptions().map(t => ({ value: t.id, label: t.label }));
+            return [{ value: 'system', label: 'System Default' }, ...opts];
+          })(),
           get: () => settingsStore.effectiveSettings.theme,
           set: (v) => handleSave('theme', v),
         },
@@ -182,11 +166,16 @@
           key: 'icon_theme',
           label: 'Icon Theme',
           description: 'File icons displayed in the explorer sidebar.',
-          options: [
-            { value: 'off', label: 'None' },
-            { value: 'default', label: 'Default' },
-            { value: 'material', label: 'Material' },
-          ],
+          options: (() => {
+            const contributed = __getContributedIconThemes();
+            const all = [{ id: 'off', label: 'None' }, { id: 'default', label: 'Default (Lucide)' }, ...contributed.map(c => ({ id: c.id, label: c.label }))];
+            const seen = new Set<string>();
+            return all.filter(o => {
+              if (seen.has(o.id)) return false;
+              seen.add(o.id);
+              return true;
+            }).map(o => ({ value: o.id, label: o.label }));
+          })(),
           get: () => settingsStore.effectiveSettings.icon_theme || 'default',
           set: (v) => handleSave('icon_theme', v),
         },
@@ -395,6 +384,42 @@
       ],
     },
   ];
+  // Settings declared in the schema registry but not hand-rendered by a section
+  // are produced automatically, so a new setting is one registration.
+  const coveredKeys = new Set(
+    baseSections.flatMap((s) => s.rows.map((r) => r.key).filter((k): k is string => !!k))
+  );
+
+  function registryRows(sectionId: string): RowDef[] {
+    return settingsRegistry
+      .getByCategory(sectionId)
+      .filter((schema) => !coveredKeys.has(schema.key))
+      .map((schema) => ({
+        id: `schema-${schema.key}`,
+        type: (schema.type === 'boolean'
+          ? 'toggle'
+          : schema.type === 'enum'
+            ? 'select'
+            : schema.type === 'number'
+              ? 'range'
+              : 'text') as RowDef['type'],
+        key: schema.key,
+        label: schema.title ?? schema.key,
+        description: schema.description,
+        options: schema.enum,
+        min: schema.min,
+        max: schema.max,
+        step: schema.step,
+        get: () => (settingsStore.effectiveSettings as Record<string, any>)[schema.key],
+        set: (v) => handleSave(schema.key, v),
+        visible: schema.when,
+      }));
+  }
+
+  const sections: SectionDef[] = $derived(
+    baseSections.map((s) => ({ ...s, rows: [...s.rows, ...registryRows(s.id)] }))
+  );
+
 
   const searchableRows = $derived(
     sections.flatMap((s) =>
@@ -429,7 +454,7 @@
 
 {#snippet scopeBadge(key: string)}
   {#if workspaceOverrides.has(key)}
-    <span class="mt-1.5 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-subtle bg-surface-2 text-secondary" title="Overridden in workspace settings">
+    <span class="mt-1.5 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-subtle bg-elevated text-secondary" title="Overridden in workspace settings">
       <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
       Workspace
       <button
@@ -465,9 +490,9 @@
       aria-label={`Toggle ${p.label}`}
       aria-checked={p.get()}
       onclick={() => p.set(!p.get())}
-      class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {p.get() ? 'bg-accent' : 'bg-surface-2 border border-subtle'}"
+      class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {p.get() ? 'bg-accent' : 'bg-elevated border border-subtle'}"
     >
-      <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-canvas shadow transition-transform {p.get() ? 'translate-x-4' : 'translate-x-0.5'}"></span>
+      <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-editor shadow transition-transform {p.get() ? 'translate-x-4' : 'translate-x-0.5'}"></span>
     </button>
   </div>
 {/snippet}
@@ -517,7 +542,7 @@
       id={p.id}
       type="text"
       placeholder={p.placeholder}
-      class="rounded p-1.5 text-sm outline-none w-56 shrink-0 border bg-canvas border-subtle text-primary placeholder-muted focus:border-focus"
+      class="rounded p-1.5 text-sm outline-none w-56 shrink-0 border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
       value={p.get()}
       oninput={(e) => p.set((e.target as HTMLInputElement).value)}
     />
@@ -532,7 +557,7 @@
         id={p.id}
         type="text"
         placeholder={p.placeholder}
-        class="flex-1 rounded p-1.5 text-sm outline-none border bg-canvas border-subtle text-primary placeholder-muted focus:border-focus"
+        class="flex-1 rounded p-1.5 text-sm outline-none border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
         onkeydown={(e) => {
           if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
             p.set((e.target as HTMLInputElement).value.trim());
@@ -548,12 +573,12 @@
             input.value = '';
           }
         }}
-        class="px-3 py-1.5 text-sm rounded border border-subtle bg-surface-2 text-primary hover:bg-hover transition-colors"
+        class="px-3 py-1.5 text-sm rounded border border-subtle bg-elevated text-primary hover:bg-hover transition-colors"
       >Add</button>
     </div>
     <div class="mt-2.5 flex flex-wrap gap-1.5">
       {#each p.get() as pattern (pattern)}
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-subtle bg-surface-2 text-secondary">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-subtle bg-elevated text-secondary">
           {pattern}
           <button
             aria-label={`Remove ${pattern}`}
@@ -576,7 +601,7 @@
   {#snippet children()}
     <div class="flex h-full overflow-hidden">
       <!-- Sidebar -->
-      <aside class="w-44 lg:w-52 xl:w-56 shrink-0 border-r border-subtle bg-surface flex flex-col py-2 overflow-y-auto">
+      <aside class="w-44 lg:w-52 xl:w-56 shrink-0 border-r border-subtle flex flex-col py-2 overflow-y-auto">
         <div class="px-4 py-1.5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted">Settings</div>
         {#each sections as sec (sec.id)}
           {@const active = activeSection === sec.id}
@@ -602,7 +627,7 @@
       <!-- Main content -->
       <div class="flex-1 flex flex-col overflow-hidden min-w-0">
         <!-- Search bar -->
-        <div class="px-4 py-3 border-b border-subtle shrink-0 bg-surface">
+        <div class="px-4 py-3 border-b border-subtle shrink-0">
           <div class="relative max-w-xs">
             <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" size={13} />
             <input
@@ -610,10 +635,10 @@
               type="text"
               placeholder="Search settings..."
               bind:value={searchQuery}
-              class="w-full pl-8 pr-3 py-1.5 text-sm rounded outline-none border bg-canvas border-subtle text-primary placeholder-muted focus:border-focus"
+              class="w-full pl-8 pr-3 py-1.5 text-sm rounded outline-none border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
             />
             {#if filteredResults && filteredResults.length > 0}
-              <div class="absolute top-full left-0 right-0 mt-1 rounded border border-subtle bg-surface-2 shadow-elevated overflow-hidden z-50 max-h-72 overflow-y-auto">
+              <div class="absolute top-full left-0 right-0 mt-1 rounded border border-subtle bg-elevated shadow-elevated overflow-hidden z-50 max-h-72 overflow-y-auto">
                 {#each filteredResults as result (result.id)}
                   <button
                     onclick={() => scrollToSetting(result.id)}
@@ -626,7 +651,7 @@
                 {/each}
               </div>
             {:else if searchQuery.trim() && filteredResults?.length === 0}
-              <div class="absolute top-full left-0 right-0 mt-1 rounded border border-subtle bg-surface-2 shadow-elevated overflow-hidden z-50">
+              <div class="absolute top-full left-0 right-0 mt-1 rounded border border-subtle bg-elevated shadow-elevated overflow-hidden z-50">
                 <div class="px-3 py-2 text-sm text-muted">No settings found for "{searchQuery}"</div>
               </div>
             {/if}

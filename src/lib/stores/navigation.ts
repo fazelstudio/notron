@@ -1,3 +1,9 @@
+/**
+ * Navigation
+ *
+ * State store for navigation.
+ */
+
 import { writable, get, derived } from 'svelte/store';
 import { MAX_NAV_STACK, NAV_LINE_DELTA } from '../constants';
 
@@ -135,7 +141,7 @@ function createNavigationStore() {
       }
     },
 
-    // ── NAV-006: Navigate to entry (reopen file if closed) ────────────────
+ // NAV-006: Navigate to entry (reopen file if closed)
     // Dispatches `request-open-file` so App.svelte handles content loading
     // and goto-retry through the normal open-file flow.  The raw addTab +
     // single-shot editor:action approach failed because the Editor component

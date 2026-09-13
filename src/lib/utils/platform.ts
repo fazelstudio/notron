@@ -1,4 +1,10 @@
-// ── Platform detection ──────────────────────────────────────────────────────
+/**
+ * Platform
+ *
+ * Utility helpers for platform.
+ */
+
+// Platform detection
 //
 // The webview has no synchronous Tauri OS API, but the user agent reliably
 // identifies the host OS. Defaults to Windows — the primary dev target — so

@@ -1,3 +1,9 @@
+/**
+ * Error
+ *
+ * Utility helpers for error.
+ */
+
 export function getHumanReadableError(err: unknown): string {
   const msg = String(err).toLowerCase();
   

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { eventBus } from '../../utils/eventBus';
   import { uiStore } from '../../stores/ui';
   import Modal from '../common/Modal.svelte';
 
@@ -12,7 +13,7 @@
 
   function handleTrust() {
     if (path) {
-      window.dispatchEvent(new CustomEvent('request-workspace-switch', { detail: { path } }));
+      eventBus.emit('request-workspace-switch', { path });
     }
     uiStore.setPendingTrustPath(null);
   }

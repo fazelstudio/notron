@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-basic-light",
+  "name": "theme-basic-light",
+  "displayName": "Basic Light",
+  "description": "Basic Light theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "basic-light",
+        "label": "Basic Light",
+        "uiTheme": "light",
+        "path": "./themes/basic-light.ts"
+      }
+    ]
+  }
+}

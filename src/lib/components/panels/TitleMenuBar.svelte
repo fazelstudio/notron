@@ -2,10 +2,10 @@
   import { editorStore } from '../../stores/editor';
   import { splitStore } from '../../stores/split';
   import { uiStore } from '../../stores/ui';
-  import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { open, save } from '@tauri-apps/plugin-dialog';
-  import { invoke } from '@tauri-apps/api/core';
-  import { getHumanReadableError } from '../../utils/error';
+  import { commandRegistry } from '../../commands/registry';
+  import { eventBus } from '../../utils/eventBus';
+  import { menuRegistry } from '../../workbench/menuRegistry';
+  import { onMount } from 'svelte';
   import { terminalStore } from '../../stores/terminal';
 
   const tabs = editorStore.tabs;
@@ -34,102 +34,41 @@
   }
 
   async function handleNewWindow() { 
-    try {
-      await invoke('open_new_window');
-      closeAll();
-    } catch (e) {
-      console.error('Failed to open new window', e);
-    }
+    void commandRegistry.execute('window.newWindow').then(() => closeAll());
   }
 
   async function handleOpenFile() {
-    try {
-      const selected = await open({ multiple: false });
-      if (selected && typeof selected === 'string') {
-        window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path: selected } }));
-      }
-    } catch (err) { console.error(err); }
-    closeAll();
+    void commandRegistry.execute('workbench.action.files.openFile').then(() => closeAll());
   }
 
   async function handleOpenFolder() {
-    try {
-      const selected = await open({ directory: true, multiple: false });
-      if (selected && typeof selected === 'string') {
-        if (selected === uiStore.getSnapshot().explorerRoot) {
-          closeAll();
-          return;
-        }
-        if (!$ui.recentWorkspaces.includes(selected)) {
-          uiStore.setPendingTrustPath(selected);
-        } else {
-          window.dispatchEvent(new CustomEvent('request-workspace-switch', { detail: { path: selected } }));
-        }
-      }
-    } catch (err) { console.error("Failed to open folder:", err); }
-    closeAll();
+    void commandRegistry.execute('workbench.action.files.openFolder').then(() => closeAll());
   }
 
   async function handleSave() {
-    if (!activeTab) return;
-    if (activeTab.path.startsWith('Untitled')) {
-      const selected = await save();
-      if (selected && typeof selected === 'string') {
-        const fileName = selected.split(/[/\\]/).pop() || 'Unknown';
-        try {
-          await invoke('save_file', { path: selected, content: activeTab.content });
-          // Keep the same tab id — update path/name in BOTH stores so the
-          // pane tab bar follows the save.
-          editorStore.updateTab(activeTab.id, { path: selected, name: fileName });
-          splitStore.updateTabInAllPanes({ id: activeTab.id, path: selected, name: fileName });
-          editorStore.markSaved(activeTab.id);
-        } catch (err) {
-          console.error(err);
-          uiStore.addToast('Save Failed', 'alert', getHumanReadableError(err));
-        }
-      }
-    } else {
-      try {
-        await invoke('save_file', { path: activeTab.path, content: activeTab.content });
-        editorStore.markSaved(activeTab.id);
-        uiStore.addToast('Saved manually', 'success');
-      } catch (err) {
-        console.error(err);
-        uiStore.addToast('Save Failed', 'alert', getHumanReadableError(err));
-      }
-    }
-    closeAll();
+    void commandRegistry.execute('workbench.action.files.save').then(() => closeAll());
   }
 
   async function handleSaveAs() {
-    if (!activeTab) return;
-    const selected = await save();
-    if (selected && typeof selected === 'string') {
-      try {
-        await invoke('save_file', { path: selected, content: activeTab.content });
-        const fileName = selected.split(/[/\\]/).pop() || 'Unknown';
-        // Keep the same tab id — update path/name in BOTH stores so the pane
-        // tab bar follows the save.
-        editorStore.updateTab(activeTab.id, { path: selected, name: fileName });
-        splitStore.updateTabInAllPanes({ id: activeTab.id, path: selected, name: fileName });
-        editorStore.markSaved(activeTab.id);
-        uiStore.addToast('Saved manually', 'success');
-      } catch (err) {
-        console.error(err);
-        uiStore.addToast('Save Failed', 'alert', getHumanReadableError(err));
-      }
-    }
-    closeAll();
+    void commandRegistry.execute('workbench.action.files.saveAs').then(() => closeAll());
   }
 
-  function handleExit() { getCurrentWindow().close(); }
+  function handleExit() { void commandRegistry.execute('window.close'); }
 
-  function openSearch() { uiStore.setActiveSidebarPanel('search'); uiStore.setSidebarOpen(true); closeAll(); }
-  function openExplorer() { uiStore.setActiveSidebarPanel('explorer'); uiStore.setSidebarOpen(true); closeAll(); }
+  function openSearch() { void commandRegistry.execute('workbench.view.search').then(() => closeAll()); }
+  function openExplorer() { void commandRegistry.execute('workbench.view.explorer').then(() => closeAll()); }
 
   function dispatchEditorAction(action: string) {
-    window.dispatchEvent(new CustomEvent('editor:action', { detail: { action } }));
-    closeAll();
+    const map: Record<string,string> = {
+      undo: 'editor.action.undo', redo: 'editor.action.redo',
+      cut: 'editor.action.clipboardCutAction', copy: 'editor.action.clipboardCopyAction', paste: 'editor.action.clipboardPasteAction',
+      find: 'editor.action.find', replace: 'editor.action.replace',
+      selectAll: 'editor.action.selectAll', copyLineUp: 'editor.action.copyLinesUpAction', copyLineDown: 'editor.action.copyLinesDownAction',
+      moveLineUp: 'editor.action.moveLinesUpAction', moveLineDown: 'editor.action.moveLinesDownAction'
+    };
+    const cmd = map[action];
+    if (cmd && commandRegistry.has(cmd)) void commandRegistry.execute(cmd).then(() => closeAll());
+    else { eventBus.emit('editor:action', { action }); closeAll(); }
   }
 
   function closeAll() { openMenu = null; }
@@ -158,53 +97,51 @@
   const menus = [
     {
       label: 'File', items: [
-        { label: 'New Text File', action: handleNewTextFile },
-        { label: 'New File', action: () => { uiStore.openNewFileDialog('menu'); closeAll(); }, shortcut: 'Ctrl+N' },
-        { label: 'New Window', action: handleNewWindow, sep: true, shortcut: 'Ctrl+Shift+N' },
-        { label: 'Open File', action: handleOpenFile, shortcut: 'Ctrl+O' },
-        { label: 'Open Folder', action: handleOpenFolder },
-        { label: 'Open Recent...', action: () => { uiStore.openRecentFoldersModal(); closeAll(); }, sep: true },
-        { label: 'Save', action: handleSave, disabled: isDisabled, shortcut: 'Ctrl+S' },
-        { label: 'Save As', action: handleSaveAs, disabled: isDisabled, sep: true, shortcut: 'Ctrl+Shift+S' },
-        { label: 'Exit', action: handleExit }
+        { label: 'New Text File', command: 'workbench.action.files.newUntitledFile', action: handleNewTextFile },
+        { label: 'New File', command: 'workbench.action.files.newFile', action: () => { uiStore.openNewFileDialog('menu'); closeAll(); }, shortcut: 'Ctrl+N' },
+        { label: 'New Window', command: 'workbench.action.newWindow', action: handleNewWindow, sep: true, shortcut: 'Ctrl+Shift+N' },
+        { label: 'Open File', command: 'workbench.action.files.openFile', action: handleOpenFile, shortcut: 'Ctrl+O' },
+        { label: 'Open Folder', command: 'workbench.action.files.openFolder', action: handleOpenFolder },
+        { label: 'Open Recent...', command: 'workbench.action.openRecent', action: () => { uiStore.openRecentFoldersModal(); closeAll(); }, sep: true },
+        { label: 'Save', command: 'workbench.action.files.save', action: handleSave, disabled: isDisabled, shortcut: 'Ctrl+S' },
+        { label: 'Save As', command: 'workbench.action.files.saveAs', action: handleSaveAs, disabled: isDisabled, sep: true, shortcut: 'Ctrl+Shift+S' },
+        { label: 'Exit', command: 'workbench.action.closeWindow', action: handleExit }
       ]
     },
     {
       label: 'Edit', items: [
-        { label: 'Undo', action: () => dispatchEditorAction('undo'), disabled: isDisabled, shortcut: 'Ctrl+Z' },
-        { label: 'Redo', action: () => dispatchEditorAction('redo'), disabled: isDisabled, sep: true, shortcut: 'Ctrl+Y' },
-        { label: 'Cut', action: () => document.execCommand('cut'), shortcut: 'Ctrl+X' },
-        { label: 'Copy', action: () => document.execCommand('copy'), shortcut: 'Ctrl+C' },
-        { label: 'Paste', action: () => document.execCommand('paste'), sep: true, shortcut: 'Ctrl+V' },
-        { label: 'Find', action: () => dispatchEditorAction('find'), disabled: isDisabled, shortcut: 'Ctrl+F' },
-        { label: 'Replace', action: () => dispatchEditorAction('replace'), disabled: isDisabled, sep: true, shortcut: 'Ctrl+H' },
-        { label: 'Reopen Closed Tab', action: () => editorStore.reopenClosedTab(), sep: true, shortcut: 'Ctrl+Shift+T' },
-        { label: 'Find in Files', action: openSearch, shortcut: 'Ctrl+Shift+F' },
-        { label: 'Replace in Files', action: openSearch, shortcut: 'Ctrl+Shift+H' }
+        { label: 'Undo', command: 'editor.action.undo', action: () => dispatchEditorAction('undo'), disabled: isDisabled, shortcut: 'Ctrl+Z' },
+        { label: 'Redo', command: 'editor.action.redo', action: () => dispatchEditorAction('redo'), disabled: isDisabled, sep: true, shortcut: 'Ctrl+Y' },
+        { label: 'Cut', command: 'editor.action.clipboardCutAction', action: () => document.execCommand('cut'), shortcut: 'Ctrl+X' },
+        { label: 'Copy', command: 'editor.action.clipboardCopyAction', action: () => document.execCommand('copy'), shortcut: 'Ctrl+C' },
+        { label: 'Paste', command: 'editor.action.clipboardPasteAction', action: () => document.execCommand('paste'), sep: true, shortcut: 'Ctrl+V' },
+        { label: 'Find', command: 'actions.find', action: () => dispatchEditorAction('find'), disabled: isDisabled, shortcut: 'Ctrl+F' },
+        { label: 'Replace', command: 'editor.action.startFindReplaceAction', action: () => dispatchEditorAction('replace'), disabled: isDisabled, sep: true, shortcut: 'Ctrl+H' },
+        { label: 'Reopen Closed Tab', command: 'workbench.action.reopenClosedEditor', action: () => editorStore.reopenClosedTab(), sep: true, shortcut: 'Ctrl+Shift+T' },
+        { label: 'Find in Files', command: 'workbench.action.findInFiles', action: openSearch, shortcut: 'Ctrl+Shift+F' },
+        { label: 'Replace in Files', command: 'workbench.action.replaceInFiles', action: openSearch, shortcut: 'Ctrl+Shift+H' }
       ]
     },
     {
       label: 'Selection', items: [
-        { label: 'Select All', action: () => dispatchEditorAction('selectAll'), disabled: isDisabled, sep: true, shortcut: 'Ctrl+A' },
-        { label: 'Copy Line Up', action: () => dispatchEditorAction('copyLineUp'), disabled: isDisabled, shortcut: 'Shift+Alt+Up' },
-        { label: 'Copy Line Down', action: () => dispatchEditorAction('copyLineDown'), disabled: isDisabled, shortcut: 'Shift+Alt+Down' },
-        { label: 'Move Line Up', action: () => dispatchEditorAction('moveLineUp'), disabled: isDisabled, shortcut: 'Alt+Up' },
-        { label: 'Move Line Down', action: () => dispatchEditorAction('moveLineDown'), disabled: isDisabled, sep: true, shortcut: 'Alt+Down' },
-        { label: 'Duplicate Selection', action: () => dispatchEditorAction('copyLineDown'), disabled: isDisabled }
+        { label: 'Select All', command: 'editor.action.selectAll', action: () => dispatchEditorAction('selectAll'), disabled: isDisabled, sep: true, shortcut: 'Ctrl+A' },
+        { label: 'Copy Line Up', command: 'editor.action.copyLinesUpAction', action: () => dispatchEditorAction('copyLineUp'), disabled: isDisabled, shortcut: 'Shift+Alt+Up' },
+        { label: 'Copy Line Down', command: 'editor.action.copyLinesDownAction', action: () => dispatchEditorAction('copyLineDown'), disabled: isDisabled, shortcut: 'Shift+Alt+Down' },
+        { label: 'Move Line Up', command: 'editor.action.moveLinesUpAction', action: () => dispatchEditorAction('moveLineUp'), disabled: isDisabled, shortcut: 'Alt+Up' },
+        { label: 'Move Line Down', command: 'editor.action.moveLinesDownAction', action: () => dispatchEditorAction('moveLineDown'), disabled: isDisabled, sep: true, shortcut: 'Alt+Down' },
+        { label: 'Duplicate Selection', command: 'editor.action.copyLinesDownAction', action: () => dispatchEditorAction('copyLineDown'), disabled: isDisabled }
       ]
     },
     {
       label: 'Terminal', items: [
         { 
           label: 'Open Terminal', 
+          command: 'workbench.action.terminal.toggleTerminal',
           disabled: () => $terminalStore.terminals.length === 0 || $terminalStore.isVisible,
           shortcut: 'Ctrl+`',
-          action: () => { 
-            terminalStore.setVisibility(true); 
-            closeAll(); 
-          } 
+          action: () => { terminalStore.setVisibility(true); closeAll(); }
         },
-        { label: 'New Terminal', shortcut: 'Ctrl+Shift+`', action: () => { 
+        { label: 'New Terminal', command: 'workbench.action.terminal.new', shortcut: 'Ctrl+Shift+`', action: () => {
             const cwd = uiStore.getSnapshot().explorerRoot || '';
             terminalStore.newTerminal(undefined, cwd); 
             closeAll(); 
@@ -214,10 +151,10 @@
     },
     {
       label: 'View', items: [
-        { label: 'Command Palette', action: () => { window.dispatchEvent(new CustomEvent('open-command-palette')); closeAll(); }, sep: true, shortcut: 'Ctrl+Shift+P' },
-        { label: 'Explorer', action: openExplorer, shortcut: 'Ctrl+Shift+E' },
-        { label: 'Search', action: openSearch, shortcut: 'Ctrl+Shift+F' },
-        { label: 'Terminal', action: () => {
+        { label: 'Command Palette', command: 'workbench.action.showCommands', action: () => { eventBus.emit('open-command-palette'); closeAll(); }, sep: true, shortcut: 'Ctrl+Shift+P' },
+        { label: 'Explorer', command: 'workbench.view.explorer', action: openExplorer, shortcut: 'Ctrl+Shift+E' },
+        { label: 'Search', command: 'workbench.view.search', action: openSearch, shortcut: 'Ctrl+Shift+F' },
+        { label: 'Terminal', command: 'workbench.action.terminal.toggleTerminal', action: () => {
             if ($terminalStore.terminals.length === 0) {
               const cwd = uiStore.getSnapshot().explorerRoot || '';
               terminalStore.newTerminal(undefined, cwd);
@@ -226,35 +163,75 @@
             closeAll();
           }, shortcut: 'Ctrl+`'
         },
-        { label: 'Problems', action: () => {
-            terminalStore.setActivePanel('problems');
-            closeAll();
-          }
-        },
-        { label: 'Output', action: () => {
-            terminalStore.setActivePanel('output');
-            closeAll();
-          }, sep: true
-        },
-        { label: 'Welcome Page', action: () => {
-            const w = $tabs.find((t: any) => t.language === 'welcome');
-            if (w) editorStore.setActiveTab(w.id);
-            else editorStore.addTab({ id: 'welcome', path: 'Welcome', name: 'Welcome', content: '', language: 'welcome', isPreview: true });
-            closeAll();
-          }, checked: () => $tabs.some((t: any) => t.language === 'welcome') },
-        { label: 'Minimap', action: () => { uiStore.toggleMinimap(); closeAll(); }, checked: isMinimapChecked },
-        { label: 'Breadcrumbs', action: () => { uiStore.toggleBreadcrumbs(); closeAll(); }, checked: isBreadcrumbsChecked },
-        { label: 'Sticky Scroll', action: () => { uiStore.toggleStickyScroll(); closeAll(); }, checked: isStickyScrollChecked, sep: true },
-        { label: 'Status Bar', action: () => { uiStore.toggleStatusBar(); closeAll(); }, checked: isStatusBarChecked }
+        { label: 'Problems', command: 'workbench.actions.view.problems', action: () => { terminalStore.setActivePanel('problems'); closeAll(); } },
+        { label: 'Output', command: 'workbench.actions.view.output', action: () => { terminalStore.setActivePanel('output'); closeAll(); }, sep: true },
+        { label: 'Welcome Page', command: 'workbench.action.showWelcomePage', action: () => { void commandRegistry.execute('workbench.action.showWelcomePage').then(() => closeAll()); }, checked: () => $tabs.some((t: any) => t.language === 'welcome') },
+        { label: 'Minimap', command: 'workbench.action.toggleMinimap', action: () => { uiStore.toggleMinimap(); closeAll(); }, checked: isMinimapChecked },
+        { label: 'Breadcrumbs', command: 'workbench.action.toggleBreadcrumbs', action: () => { uiStore.toggleBreadcrumbs(); closeAll(); }, checked: isBreadcrumbsChecked },
+        { label: 'Sticky Scroll', command: 'workbench.action.toggleStickyScroll', action: () => { uiStore.toggleStickyScroll(); closeAll(); }, checked: isStickyScrollChecked, sep: true },
+        { label: 'Status Bar', command: 'workbench.action.toggleStatusbarVisibility', action: () => { uiStore.toggleStatusBar(); closeAll(); }, checked: isStatusBarChecked }
       ]
     }
   ];
+
+  // Reactive view of the registry — when extensions add menus, this updates.
+  let registryVersion = $state(0);
+
+  // Register menu items for discovery.
+  onMount(() => {
+    registryVersion++; // trigger initial read
+    const flat: any[] = [];
+    for (const menu of menus) {
+      const menuId = `menubar/${menu.label.toLowerCase()}`;
+      for (const item of menu.items as any[]) {
+        flat.push({
+          id: `${menuId}/${item.label}`,
+          menuId,
+          label: item.label,
+          command: item.command,
+          shortcut: item.shortcut,
+          disabled: item.disabled,
+          checked: item.checked,
+          separator: item.sep,
+          action: item.action,
+          group: item.label.includes('New') ? 'new' : undefined
+        });
+      }
+    }
+    const d = menuRegistry.registerAll(flat);
+    registryVersion++; // Force update to ensure displayMenus catches the new items
+    return () => d.dispose();
+  });
+
+  $effect(() => {
+    const d = menuRegistry.onDidChange(() => registryVersion++);
+    return () => d.dispose();
+  });
+
+  let displayMenus = $derived.by(() => {
+    void registryVersion;
+    const reg = menuRegistry.getMenubarMenus();
+    if (reg.size === 0) return menus;
+    return [...reg.entries()].map(([label, items]) => ({
+      label,
+      items: items.map((i: any) => ({
+        label: i.label,
+        command: i.command,
+        shortcut: i.shortcut,
+        disabled: i.disabled,
+        checked: i.checked,
+        sep: i.separator,
+        action: i.action
+      }))
+    }));
+    registryVersion++; // refresh the reactive view
+  });
 </script>
 
 <svelte:window onclick={closeAll} />
 
 <div class="flex items-center text-xs h-full ml-2 space-x-1">
-  {#each menus as menu (menu.label)}
+  {#each displayMenus as menu (menu.label)}
     <div class="relative">
       <button
         class="px-2 py-1 rounded outline-none cursor-pointer select-none transition-colors hover:bg-hover hover:text-primary"
@@ -269,15 +246,20 @@
         <div
           role="menu"
           tabindex="0"
-          class="absolute top-full left-0 min-w-[240px] rounded border shadow-elevated z-[100] py-1 bg-surface-2 border-subtle text-primary"
+          class="absolute top-full left-0 min-w-[240px] rounded border shadow-elevated z-[100] py-1 bg-elevated border-subtle text-primary"
           onclick={(e) => { e.stopPropagation(); closeAll(); }}
           onkeydown={(e) => { if (e.key === 'Escape') closeAll(); }}
         >
-          {#each menu.items as item (item.label)}
+          {#each menu.items as item}
               <button
                 class="flex items-center justify-between w-full px-3 py-1.5 text-xs outline-none cursor-pointer select-none {!(item as any).disabled?.() ? 'hover:bg-selected focus:bg-selected text-secondary hover:text-primary transition-colors' : 'text-muted'}"
                 disabled={(item as any).disabled?.()}
-                onclick={() => { if (!((item as any).disabled?.())) { (item as any).action(); } }}
+                onclick={() => {
+                  if ((item as any).disabled?.()) return;
+                  const cmd = (item as any).command;
+                  if (cmd && commandRegistry.has(cmd)) { void commandRegistry.execute(cmd); closeAll(); }
+                  else (item as any).action();
+                }}
                 onmouseenter={(e) => (e.target as HTMLElement).focus()}
               >
                 <div class="flex items-center">

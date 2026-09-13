@@ -1,0 +1,11 @@
+import { xcodeLight, defaultSettingsXcodeLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "xcode-light";
+export const label = "Xcode Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = xcodeLight;
+export const settings = defaultSettingsXcodeLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/xcode-light.ts" });

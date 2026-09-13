@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-basic-dark",
+  "name": "theme-basic-dark",
+  "displayName": "Basic Dark",
+  "description": "Basic Dark theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "basic-dark",
+        "label": "Basic Dark",
+        "uiTheme": "dark",
+        "path": "./themes/basic-dark.ts"
+      }
+    ]
+  }
+}

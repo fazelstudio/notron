@@ -1,0 +1,11 @@
+import { noctisLilac, defaultSettingsNoctisLilac } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "noctis-lilac";
+export const label = "Noctis Lilac";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = noctisLilac;
+export const settings = defaultSettingsNoctisLilac;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/noctis-lilac.ts" });

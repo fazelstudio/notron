@@ -1,0 +1,11 @@
+import { nord, defaultSettingsNord } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "nord";
+export const label = "Nord";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = nord;
+export const settings = defaultSettingsNord;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/nord.ts" });

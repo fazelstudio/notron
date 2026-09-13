@@ -1,0 +1,11 @@
+import { duotoneLight, defaultSettingsDuotoneLight } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "duotone-light";
+export const label = "Duotone Light";
+export const isDark = false;
+export const uiTheme = "light";
+export const extension = duotoneLight;
+export const settings = defaultSettingsDuotoneLight;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/duotone-light.ts" });

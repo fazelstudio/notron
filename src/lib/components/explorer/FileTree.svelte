@@ -46,11 +46,11 @@
       const expandedSnap = uiStore.getExpandedPathsSetSnapshot();
       const snap = uiStore.getSnapshot();
 
-      // ── .gitignore / .notronignore changed → full cache flush ──────────────
+ // .gitignore / .notronignore changed → full cache flush
       // gitignore rules affect is_ignored for EVERY file in the tree, not just
       // the directory containing the changed file. Flush everything and re-read
       // all currently-expanded directories to pick up new is_ignored values.
-      // This matches VS Code's behavior where all decorations update after a
+      // This matches the editor's behavior where all decorations update after a
       // gitignore change.
       if (gitignoreChanged) {
         sharedNodeCache.clear();
@@ -78,7 +78,7 @@
         return; // normal per-file handling already included in re-read above
       }
 
-      // ── Normal file-level change handling ──────────────────────────────────
+ // Normal file-level change handling
       for (const change of changes) {
         switch (change.type) {
           case 'created':
@@ -160,10 +160,16 @@
   import TreeNode from './TreeNode.svelte';
   import Tooltip from '../common/Tooltip.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
-  import { getFileIcon } from '../../extensions/material-icons/fileIcons';
-  import MaterialIcon from '../../extensions/material-icons/MaterialIcon.svelte';
+  import { getFileIcon } from '../../icon-theme/default';
+  import { getIconProvider } from '../../icon-theme/registry';
   import { gitDecorationStore } from '../../stores/gitDecoration';
+  import { commandRegistry } from '../../commands/registry';
+  import { contextMenuRegistry } from '../../workbench/contextMenuRegistry';
+  import { registerExplorerCommands } from '../../commands/explorerCommands';
+  import { fileService } from '../../services/fileService';
+  import { eventBus } from '../../utils/eventBus';
   import { getGitStatusTooltip } from '../../utils/gitStatusStyles';
+  import { portal } from '../../utils/menuPosition';
 
   interface DirBatchEntry {
     path: string;
@@ -215,16 +221,38 @@
     largeFolderModal.resolve = null;
   }
 
-  // ─── Selection ────────────────────────────────────────────────
+ // Explorer commands via central registry (total modularity)
+  onMount(() => {
+    registerExplorerCommands({
+      newFile: (p) => startCreate('file', p ?? activePath ?? rootPath),
+      newFolder: (p) => startCreate('folder', p ?? activePath ?? rootPath),
+      refresh: () => uiStore.triggerExplorerRefresh(),
+      collapseAll: () => uiStore.triggerExplorerCollapse(),
+      copy: () => copySelected(),
+      cut: () => cutSelected(),
+      paste: () => pasteClipboard(),
+      duplicate: () => duplicateSelected(),
+      rename: () => { if (activePath) startRename(activePath); },
+      delete: () => deleteSelected(),
+      copyPath: () => { if (activePath) copyPathToClipboard(activePath); },
+      copyRelativePath: () => { if (activePath) copyRelativePathToClipboard(activePath); },
+      revealInFileManager: () => { if (activePath) revealInFileManager(activePath); },
+      openInTerminal: () => { const p = activePath ? (isDir(activePath, flatListMap) ? activePath : getParentPath(activePath)) : rootPath; openTerminalAt(p); },
+      openToSide: () => { if (activePath && !isDir(activePath, flatListMap)) eventBus.emit('request-open-file-split', { path: activePath }); },
+      toggleDotFiles: () => uiStore.toggleShowDotFiles()
+    });
+  });
+
+ // Selection
   let selectedPaths   = $state<Set<string>>(new Set());
   let anchorPath      = $state<string | null>(null);
   let activePath      = $state<string | null>(null);
 
-  // ─── Clipboard ────────────────────────────────────────────────
+ // Clipboard
   let clipboardPaths  = $state<string[]>([]);
   let clipboardOp     = $state<ClipboardOp>(null);
 
-  // ─── Drag ─────────────────────────────────────────────────────
+ // Drag
   let drag = $state<DragState>({
     active: false, paths: [], ghostX: 0, ghostY: 0,
     dropTargetPath: null, dropTargetValid: false, autoExpandTimer: null,
@@ -240,24 +268,24 @@
   let lastPointerY = 0;
   let dragTargetRaf: number | null = null;
 
-  // ─── Rename inline ────────────────────────────────────────────
+ // Rename inline
   let renamingPath    = $state<string | null>(null);
   let renameValue     = $state('');
   let renameError     = $state('');
 
-  // ─── Create new item ──────────────────────────────────────────
+ // Create new item
   let creatingIn      = $state<string | null>(null);
   let creatingType    = $state<'file' | 'folder' | null>(null);
   let creatingValue   = $state('');
   let creatingError   = $state('');
 
-  // ─── Extra faded paths (temporary, for drag/move) ──────────────
+ // Extra faded paths (temporary, for drag/move)
   let extraFadedPaths = $state<Set<string>>(new Set());
 
-  // ─── Undo stack ───────────────────────────────────────────────
+ // Undo stack
   let undoStack: UndoEntry[] = $state([]);
 
-  // ─── Visual overlay ───────────────────────────────────────────
+ // Visual overlay
   // PERF: fadedPaths as a $derived Set removed.
   // Each drag.active/clipboardOp change created a new Set, so Svelte saw a new
   // reference and re-rendered EVERY visible TreeNode.
@@ -274,9 +302,11 @@
   let nodeCacheVersion = $state(0);
 
   let hoveredPath = $state('');
+  let isMaterialTheme = $derived(getIconProvider(settingsStore.effectiveSettings.icon_theme)?.isMaterial === true);
+  let isOffTheme = $derived(settingsStore.effectiveSettings.icon_theme === 'off');
 
   // Tooltip content: full path + git status (format: "path/to/file - Status")
-  // For folders: "folder - Contains modified items" (VSCode-style)
+  // For folders: "folder - Contains modified items" (the editor-style)
   let hoveredTooltip = $derived.by(() => {
     if (!hoveredPath) return '';
     const decoration = $gitDecorationStore[hoveredPath];
@@ -320,6 +350,21 @@
 
   let ctxMenu = $state<{ isOpen: boolean; x: number; y: number; items: MenuItem[] }>({
     isOpen: false, x: 0, y: 0, items: []
+  });
+  let ctxMenuElement = $state<HTMLDivElement>();
+
+  $effect(() => {
+    if (!ctxMenu.isOpen || !ctxMenuElement) return;
+    const frame = requestAnimationFrame(() => {
+      if (!ctxMenuElement) return;
+      const rect = ctxMenuElement.getBoundingClientRect();
+      const gap = 8;
+      const x = Math.max(gap, Math.min(ctxMenu.x, window.innerWidth - rect.width - gap));
+      const y = Math.max(gap, Math.min(ctxMenu.y, window.innerHeight - rect.height - gap));
+      ctxMenuElement.style.left = `${x}px`;
+      ctxMenuElement.style.top = `${y}px`;
+    });
+    return () => cancelAnimationFrame(frame);
   });
 
   let expandedSet = $derived($expandedPathsStore);
@@ -399,7 +444,7 @@
     return node ? node.depth : -1;
   });
 
-  // ─── Sticky Scroll ───────────────────────────────────────────────
+ // Sticky Scroll
   let listScrollTop = $state(0);
   const ITEM_HEIGHT = 26;
   
@@ -576,9 +621,9 @@
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 1 — SELECTION
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   function applySingleSelect(path: string, node: FlatTreeNode, openFile = true) {
     selectedPaths = new Set([path]);
@@ -711,9 +756,9 @@
     if (creatingIn)   cancelCreate();
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 2 — KEYBOARD NAVIGATION
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   function scrollNodeIntoView(path: string) {
     setTimeout(() => {
@@ -799,9 +844,9 @@
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 3 — CONTEXT MENU
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   function showContextMenu(event: MouseEvent, node?: FlatTreeNode) {
     window.dispatchEvent(new CustomEvent('notron:cancel-tooltips'));
@@ -830,26 +875,26 @@
 
     if (isBackground || count === 0) {
       return [
-        { label: 'New File',       action: () => startCreate('file',   rootPath) },
-        { label: 'New Folder',     action: () => startCreate('folder', rootPath) },
+        { label: 'New File',       action: () => startCreate('file',   rootPath), command: 'explorer.newFile' } as any,
+        { label: 'New Folder',     action: () => startCreate('folder', rootPath), command: 'explorer.newFolder' } as any,
         { separator: true, label: '', action: () => {} },
-        { label: 'Paste',          action: () => pasteClipboard(), disabled: !canPaste },
+        { label: 'Paste',          action: () => pasteClipboard(), disabled: !canPaste, command: 'explorer.paste' } as any,
         { separator: true, label: '', action: () => {} },
-        { label: 'Open in Integrated Terminal', action: () => openTerminalAt(rootPath), shortcut: 'Ctrl+`' },
+        { label: 'Open in Integrated Terminal', action: () => openTerminalAt(rootPath), shortcut: 'Ctrl+`', command: 'explorer.openInTerminal' } as any,
         { separator: true, label: '', action: () => {} },
-        { label: 'Copy Path',          action: () => copyPathToClipboard(rootPath),          shortcut: 'Ctrl+Shift+C' },
-        { label: 'Copy Relative Path', action: () => copyRelativePathToClipboard(rootPath) },
+        { label: 'Copy Path',          action: () => copyPathToClipboard(rootPath),          shortcut: 'Ctrl+Shift+C', command: 'explorer.copyPath' } as any,
+        { label: 'Copy Relative Path', action: () => copyRelativePathToClipboard(rootPath), command: 'explorer.copyRelativePath' } as any,
         { separator: true, label: '', action: () => {} },
-        { label: 'Refresh',        action: () => uiStore.triggerExplorerRefresh() },
-        { label: 'Reveal in File Manager', action: () => revealInFileManager(rootPath) },
+        { label: 'Refresh',        action: () => uiStore.triggerExplorerRefresh(), command: 'explorer.refresh' } as any,
+        { label: 'Reveal in File Manager', action: () => revealInFileManager(rootPath), command: 'explorer.revealInFileManager' } as any,
         { separator: true, label: '', action: () => {} },
         { label: 'Remove Folder from Workspace', action: () => uiStore.setExplorerRoot(null), danger: true },
       ];
     }
 
     const singleFolderItems: MenuItem[] = hasFolder && isSingle ? [
-      { label: 'New File in Folder',   action: () => startCreate('file',   targets[0]) },
-      { label: 'New Folder in Folder', action: () => startCreate('folder', targets[0]) },
+      { label: 'New File in Folder',   action: () => startCreate('file',   targets[0]), command: 'explorer.newFile' } as any,
+      { label: 'New Folder in Folder', action: () => startCreate('folder', targets[0]), command: 'explorer.newFolder' } as any,
       { separator: true, label: '', action: () => {} },
     ] : [];
 
@@ -857,48 +902,79 @@
       ...(hasFile ? [{
         label: isSingle ? 'Open' : `Open ${count} files`,
         action: () => targets.filter(p => !isDir(p, flatListMap)).forEach(p => openFileInTab(p)),
-      }] : []),
+        command: 'explorer.open'
+      } as any] : []),
 
       ...(isSingle && !hasFolder ? [{
         label: 'Open to the Side',
         action: () => openFileInTabSplit(targets[0]),
-      }] : []),
+        command: 'explorer.openToSide'
+      } as any] : []),
 
       ...(hasFile ? [{ separator: true, label: '', action: () => {} }] : []),
 
       ...singleFolderItems,
 
-      { label: 'Copy',             action: () => copySelected(),   shortcut: 'Ctrl+C' },
-      { label: 'Cut',              action: () => cutSelected(),    shortcut: 'Ctrl+X' },
-      { label: 'Paste',            action: () => pasteClipboard(), shortcut: 'Ctrl+V', disabled: !canPaste },
-      { label: 'Duplicate',        action: () => duplicateSelected(), disabled: !isSingle },
+      { label: 'Copy',             action: () => copySelected(),   shortcut: 'Ctrl+C', command: 'explorer.copy' } as any,
+      { label: 'Cut',              action: () => cutSelected(),    shortcut: 'Ctrl+X', command: 'explorer.cut' } as any,
+      { label: 'Paste',            action: () => pasteClipboard(), shortcut: 'Ctrl+V', disabled: !canPaste, command: 'explorer.paste' } as any,
+      { label: 'Duplicate',        action: () => duplicateSelected(), disabled: !isSingle, command: 'explorer.duplicate' } as any,
       { separator: true, label: '', action: () => {} },
 
-      { label: 'Rename',           action: () => startRename(targets[0]),  shortcut: 'F2', disabled: !isSingle },
-      { label: 'Delete',           action: () => deleteSelected(),         shortcut: 'Delete', danger: true },
+      { label: 'Rename',           action: () => startRename(targets[0]),  shortcut: 'F2', disabled: !isSingle, command: 'explorer.rename' } as any,
+      { label: 'Delete',           action: () => deleteSelected(),         shortcut: 'Delete', danger: true, command: 'explorer.delete' } as any,
       { separator: true, label: '', action: () => {} },
 
-      { label: 'Copy Path',        action: () => copyPathToClipboard(targets[0]), disabled: !isSingle },
-      { label: 'Copy Relative Path', action: () => copyRelativePathToClipboard(targets[0]), disabled: !isSingle },
+      { label: 'Copy Path',        action: () => copyPathToClipboard(targets[0]), disabled: !isSingle, command: 'explorer.copyPath' } as any,
+      { label: 'Copy Relative Path', action: () => copyRelativePathToClipboard(targets[0]), disabled: !isSingle, command: 'explorer.copyRelativePath' } as any,
       { separator: true, label: '', action: () => {} },
 
-      { label: 'Reveal in File Manager', action: () => revealInFileManager(targets[0]), disabled: !isSingle },
+      { label: 'Reveal in File Manager', action: () => revealInFileManager(targets[0]), disabled: !isSingle, command: 'explorer.revealInFileManager' } as any,
       { label: 'Open in Terminal',       action: () => openTerminalAt(
         isSingle && hasFolder ? targets[0] : getParentPath(targets[0])
-      )},
+      ), command: 'explorer.openInTerminal' } as any,
+      { separator: true, label: '', action: () => {} },
+      { label: 'Close Folder', action: () => uiStore.setExplorerRoot(null), command: 'workbench.action.closeFolder' } as any,
+      { label: 'Close Workspace', action: () => uiStore.setExplorerRoot(null), command: 'workbench.action.closeWorkspace' } as any,
     ];
+    // Append any additional contributions from the registry that are not already present.
+    // This allows extensions to add items to explorer/context without editing this file.
+    try {
+      const extra = contextMenuRegistry.getForContext('explorer/context');
+      const existingIds = new Set(result.map((r: any) => r.command).filter(Boolean));
+      for (const item of extra) {
+        if (item.command && existingIds.has(item.command)) continue;
+        // Skip items that are already handled as background-only when we are not in background
+        if (isBackground && !['explorer.newFile','explorer.newFolder','explorer.paste','explorer.openInTerminal','explorer.copyPath','explorer.copyRelativePath','explorer.refresh','explorer.revealInFileManager'].includes(item.command ?? '')) continue;
+        result.push({
+          label: item.label,
+          command: item.command,
+          action: () => { if (item.command && commandRegistry.has(item.command)) commandRegistry.execute(item.command); },
+          group: item.group,
+          order: item.order
+        } as any);
+      }
+    } catch {}
+
 
     return result;
   }
 
   function handleCtxItemAction(item: MenuItem) {
-    if (!item.disabled) item.action();
+    if (item.disabled) { ctxMenu.isOpen = false; return; }
+    // Try command registry first (modular), fallback to direct action
+    const cmd = (item as any).command as string | undefined;
+    if (cmd && commandRegistry.has(cmd)) {
+      void commandRegistry.execute(cmd);
+    } else {
+      item.action();
+    }
     ctxMenu.isOpen = false;
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 4 — CLIPBOARD (Copy, Cut, Paste)
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   function copySelected() {
     if (selectedPaths.size === 0) return;
@@ -954,7 +1030,7 @@
       if (op === 'copy') {
         const copies = sources.map(src => ({ sourcePath: src, destPath: `${destFolder}/${getFileName(src)}` }));
         try {
-          await invoke('copy_items', { copies: copies.map(c => ({ source_path: c.sourcePath, dest_path: c.destPath })) });
+          await fileService.copyItems(copies);
         } catch (err) {
           uiStore.addToast(`Copy failed: ${humanizeError(err)}`, 'alert');
         }
@@ -963,7 +1039,7 @@
         const moves = sources.map(src => ({ oldPath: src, newPath: `${destFolder}/${getFileName(src)}` })).filter(m => m.oldPath !== m.newPath);
         if (moves.length > 0) {
           try {
-            await invoke('rename_items', { moves: moves.map(m => ({ old_path: m.oldPath, new_path: m.newPath })) });
+            await fileService.renameItems(moves);
           } catch (err) {
             uiStore.addToast(`Move failed: ${humanizeError(err)}`, 'alert');
           }
@@ -1010,7 +1086,7 @@
 
     const destPath = `${parentPath}/${newName}`;
     try {
-      await invoke('copy_item', { srcPath, dstPath: destPath });
+      await fileService.copyItem(srcPath, destPath);
       invalidateDirCache(parentPath);
       nodeCacheVersion++;
 
@@ -1119,9 +1195,9 @@
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 5 — DELETE
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   let deleteConfirmState = $state<{ targets: string[]; isOpen: boolean; requireTyping?: string }>({
     targets: [], isOpen: false
@@ -1164,7 +1240,7 @@
     extraFadedPaths = new Set(targets);
 
     try {
-      await invoke('delete_items', { paths: targets });
+      await fileService.deleteItems(targets);
       for (const p of targets) {
         // Close open tabs (clean) or mark dirty tabs as deleted — both stores.
         editorStore.closeTabsOfDeletedPath(p);
@@ -1204,9 +1280,9 @@
     deleteDontShowAgain = false;
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 6 — RENAME INLINE
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   function startRenameActive() {
     if (!activePath) return;
@@ -1277,7 +1353,7 @@
     renamingPath = null;
 
     try {
-      await invoke('rename_item', { oldPath, newPath });
+      await fileService.renameItem(oldPath, newPath);
 
       renameDirCacheKey(oldPath, newPath);
       updateExpandedPathsAfterRename(oldPath, newPath);
@@ -1332,9 +1408,9 @@
     if (event.key === 'Escape') { event.preventDefault(); cancelRename(); }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 7 — CREATE NEW FILE/FOLDER
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   async function startCreate(type: 'file' | 'folder', parentPath: string) {
     if (renamingPath) cancelRename();
@@ -1382,9 +1458,9 @@
 
     try {
       if (type === 'file') {
-        await invoke('create_file', { path: newPath });
+        await fileService.createFile(newPath);
       } else {
-        await invoke('create_directory', { path: newPath });
+        await fileService.createDirectory(newPath);
       }
 
       const newNode = { name, path: newPath, is_dir: type === 'folder' };
@@ -1411,9 +1487,9 @@
     creatingError = '';
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 8 — DRAG-TO-MOVE
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   function handleNodePointerDown(event: PointerEvent, node: FlatTreeNode) {
     if (event.button !== 0) return;
@@ -1429,7 +1505,7 @@
     if (selectedPaths.has(node.path) && selectedPaths.size > 1) {
       pathsToDrag = [...selectedPaths];
     } else {
-      // Don't reset the selection when Ctrl/Shift is held —
+      // Don't reset the selection when Ctrl/Shift is held
       // handleNodeClick handles multi-select correctly.
       if (!ctrl && !shift && !selectedPaths.has(node.path)) {
         applySingleSelect(node.path, node, false);
@@ -1489,7 +1565,7 @@
     // B.5 — coalesce drop-target computation to one pass per animation frame.
     // Raw pointermove can fire hundreds of times/sec; isValidDropTarget + the
     // elementFromPoint hit-test must not run more often than the screen can
-    // refresh (same pattern as VS Code's drag feedback, throttled to ~60fps).
+    // refresh (same as the editor's drag feedback, throttled to ~60fps).
     if (dragTargetRaf !== null) return;
     dragTargetRaf = requestAnimationFrame(() => {
       dragTargetRaf = null;
@@ -1593,9 +1669,9 @@
     window.removeEventListener('blur',        onDragWindowBlur);
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 8b — OPTIMISTIC MOVE + ROLLBACK (B.5)
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   // B.5 — optimistic UI: the move is applied to the local tree state *in the
   // same frame* the drop happens, then `rename_items` runs async in the
@@ -1622,8 +1698,8 @@
     const tabRenames = applyMovesOptimistic(moves, destFolder);
 
     try {
-      // Single batched command for all items (B.5 — 1 IPC, not N round-trips).
-      await invoke('rename_items', { moves: moves.map(m => ({ old_path: m.oldPath, new_path: m.newPath })) });
+      // Single batched command for all items (B.5 — 1 IPC, not N round-trips) — via service
+      await fileService.renameItems(moves);
 
       // Reveal the moved items: expand the destination folder if it isn't
       // expanded yet (reads from disk, which now contains the moved entries).
@@ -1747,9 +1823,9 @@
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 9 — UNDO STACK
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   async function undoLastAction() {
     const entry = undoStack.shift();
@@ -1758,21 +1834,18 @@
     try {
       switch (entry.type) {
         case 'move':
-          await invoke('rename_item', {
-            oldPath: entry.payload.newPath,
-            newPath: entry.payload.oldPath,
-          });
+          await fileService.renameItem(entry.payload.newPath, entry.payload.oldPath);
           break;
         case 'rename':
-          await invoke('rename_item', { old_path: entry.payload.newPath, new_path: entry.payload.oldPath });
+          await fileService.renameItem(entry.payload.newPath, entry.payload.oldPath);
           break;
         case 'create':
-          await invoke('delete_item', { path: entry.payload.path });
+          await fileService.deleteItem(entry.payload.path);
           break;
         case 'copy':
           if (entry.payload.destPaths) {
             for (const p of entry.payload.destPaths) {
-              try { await invoke('delete_item', { path: p }); } catch {}
+              try { await fileService.deleteItem(p); } catch {}
             }
           }
           break;
@@ -1788,16 +1861,16 @@
     }
   }
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 10 — FILE/TAB OPERATIONS
-  // ════════════════════════════════════════════════════════════════
+ //
+ //
+ //
 
   function openFileInTab(path: string) {
-    window.dispatchEvent(new CustomEvent('request-open-file', { detail: { path } }));
+    eventBus.emit('request-open-file', { path });
   }
 
   function openFileInTabSplit(path: string) {
-    window.dispatchEvent(new CustomEvent('request-open-file-split', { detail: { path } }));
+    eventBus.emit('request-open-file-split', { path });
   }
 
   function copyPathToClipboard(path: string) {
@@ -1825,9 +1898,9 @@
     });
   }
 
-  // ════════════════════════════════════════════════════════════════
+ //
   // LIFECYCLE
-  // ════════════════════════════════════════════════════════════════
+ //
 
   onMount(() => {
     initGlobalWatcher();
@@ -1892,7 +1965,7 @@
 {:else if rootChildren.length === 0}
   <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
     <div 
-      class="p-4 text-xs text-muted flex-1 h-full outline-none transition-all {activePath === rootPath ? 'bg-surface-2 ring-1 ring-inset ring-focus' : ''}"
+      class="p-4 text-xs text-muted flex-1 h-full outline-none transition-all {activePath === rootPath ? 'bg-sidebar-2 ring-1 ring-inset ring-focus' : ''}"
       role="presentation"
       onclick={handleBackgroundClick}
       oncontextmenu={(e) => showContextMenu(e)}
@@ -1908,7 +1981,7 @@
 {:else}
   <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
     <div
-      class="group/tree relative flex-1 h-full outline-none flex flex-col p-2 transition-all {activePath === rootPath ? 'bg-surface-2 ring-1 ring-inset ring-focus' : ''}"
+      class="group/tree relative flex-1 h-full outline-none flex flex-col p-2 transition-all {activePath === rootPath ? 'bg-sidebar-2 ring-1 ring-inset ring-focus' : ''}"
       role="tree"
       tabindex="0"
       data-node-path={rootPath}
@@ -1921,7 +1994,7 @@
     >
       <!-- STICKY SCROLL OVERLAY -->
       {#if stickyContext.nodes.length > 0}
-        <div class="absolute top-2 left-2 right-2 z-10 flex flex-col pointer-events-none overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.15)]" style="height: {stickyContext.height}px;">
+        <div class="absolute top-2 left-2 right-2 z-10 flex flex-col pointer-events-none overflow-hidden shadow-elevated-sm" style="height: {stickyContext.height}px;">
           {#each stickyContext.nodes as sticky}
             <div class="absolute left-0 right-0 pointer-events-auto bg-canvas" style="top: {sticky.top}px; height: 26px; z-index: {sticky.zIndex};">
               <TreeNode 
@@ -1955,15 +2028,16 @@
           >
             <span class="w-3.5 shrink-0 inline-block"></span>
             <span class="shrink-0 flex items-center text-accent">
-              {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
+              {#if !isOffTheme && !isMaterialTheme}
                 {#if node.creating_type === 'folder'}
                   <Folder size={14} />
                 {:else}
                   {@const Icon = getFileIcon(creatingValue || 'new_file')}
                   <Icon size={14} />
                 {/if}
-              {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
-                <MaterialIcon name={creatingValue || (node.creating_type === 'folder' ? 'new_folder' : 'new_file')} isDir={node.creating_type === 'folder'} size={14} />
+              {:else if isMaterialTheme}
+                {@const svg = node.creating_type === 'folder' ? ((getIconProvider('material') as any)?.getFolderIconSvg?.(creatingValue || 'new_folder', 14, false) ?? '') : ((getIconProvider('material') as any)?.getFileIconSvg?.(creatingValue || 'new_file', 14) ?? '')}
+                <span class="shrink-0 inline-flex items-center justify-center" style="width:14px;height:14px" aria-hidden="true">{@html svg}</span>
               {/if}
             </span>
             <input
@@ -1992,15 +2066,16 @@
           >
             <span class="w-3.5 shrink-0 inline-block"></span>
             <span class="shrink-0 flex items-center text-accent">
-              {#if settingsStore.effectiveSettings.icon_theme === 'default' || !settingsStore.effectiveSettings.icon_theme}
+              {#if !isOffTheme && !isMaterialTheme}
                 {#if node.is_dir}
                   <Folder size={14} />
                 {:else}
                   {@const Icon = getFileIcon(renameValue || node.name)}
                   <Icon size={14} />
                 {/if}
-              {:else if settingsStore.effectiveSettings.icon_theme === 'material'}
-                <MaterialIcon name={renameValue || node.name} isDir={node.is_dir} size={14} />
+              {:else if isMaterialTheme}
+                {@const svg = node.is_dir ? ((getIconProvider('material') as any)?.getFolderIconSvg?.(renameValue || node.name, 14, false) ?? '') : ((getIconProvider('material') as any)?.getFileIconSvg?.(renameValue || node.name, 14) ?? '')}
+                <span class="shrink-0 inline-flex items-center justify-center" style="width:14px;height:14px" aria-hidden="true">{@html svg}</span>
               {/if}
             </span>
             <input
@@ -2095,8 +2170,10 @@
 
 {#if ctxMenu.isOpen}
   <div
+    bind:this={ctxMenuElement}
+    use:portal
     data-notron-context-menu="true"
-    class="fixed min-w-[180px] rounded-md border p-1 shadow-elevated z-[100] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary"
+    class="fixed min-w-[180px] rounded-md border p-1 shadow-elevated z-[2147483646] animate-in fade-in duration-100 bg-sidebar-2 border-subtle text-primary"
     style="left: {ctxMenu.x}px; top: {ctxMenu.y}px;"
     role="presentation"
     onclick={(e) => e.stopPropagation()}
@@ -2142,14 +2219,14 @@
           type="checkbox"
           checked={deleteDontShowAgain}
           onchange={(e) => { deleteDontShowAgain = (e.target as HTMLInputElement).checked; }}
-          class="w-3.5 h-3.5 rounded border-subtle bg-surface-2 text-accent accent-accent cursor-pointer"
+          class="w-3.5 h-3.5 rounded border-subtle bg-sidebar-2 text-accent accent-accent cursor-pointer"
         />
         <span class="text-xs text-secondary">Don't show this again</span>
       </label>
     </div>
     {#snippet footer()}
       <div class="flex justify-end gap-3 w-full">
-        <button onclick={cancelDeleteConfirm} class="px-4 py-2 text-sm rounded bg-surface-2 hover:bg-hover transition-colors text-primary border border-subtle">
+        <button onclick={cancelDeleteConfirm} class="px-4 py-2 text-sm rounded bg-sidebar-2 hover:bg-hover transition-colors text-primary border border-subtle">
           Cancel
         </button>
         <button onclick={() => confirmDelete()} class="px-4 py-2 text-sm rounded bg-error hover:bg-error/80 transition-colors text-on-accent border border-transparent">
@@ -2170,7 +2247,7 @@
   </div>
   {#snippet footer()}
     <div class="flex justify-end gap-2">
-      <button class="px-4 py-1.5 rounded bg-surface-2 hover:bg-active text-primary text-sm transition-colors" onclick={handleLargeFolderCancel}>Cancel</button>
+      <button class="px-4 py-1.5 rounded bg-sidebar-2 hover:bg-active text-primary text-sm transition-colors" onclick={handleLargeFolderCancel}>Cancel</button>
       <button class="px-4 py-1.5 rounded hover:brightness-110 text-[var(--text-inverse)] text-sm transition-colors" style="background-color: var(--color-warning)" onclick={handleLargeFolderProceed}>Proceed</button>
     </div>
   {/snippet}

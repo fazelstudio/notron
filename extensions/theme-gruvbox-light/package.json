@@ -1,0 +1,25 @@
+{
+  "id": "notron.theme-gruvbox-light",
+  "name": "theme-gruvbox-light",
+  "displayName": "Gruvbox Light",
+  "description": "Gruvbox Light theme for Notron",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "gruvbox-light",
+        "label": "Gruvbox Light",
+        "uiTheme": "light",
+        "path": "./themes/gruvbox-light.ts"
+      }
+    ]
+  }
+}

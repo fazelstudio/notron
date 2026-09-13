@@ -1,0 +1,12 @@
+{
+  "id": "acme.custom-editor",
+  "name": "custom-editor",
+  "displayName": "Custom Editor (stub)",
+  "description": "Stub template for custom editor/preview — belum lengkap.",
+  "version": "0.1.0",
+  "publisher": "acme",
+  "engines": { "notron": "^0.1.0" },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onCustomEditor:acme.custom"],
+  "contributes": {}
+}

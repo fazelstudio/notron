@@ -1,0 +1,11 @@
+import { red, defaultSettingsRed } from '@uiw/codemirror-themes-all';
+import { registerTheme } from '../../../src/lib/theme/registry';
+import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+export const id = "red";
+export const label = "Red";
+export const isDark = true;
+export const uiTheme = "dark";
+export const extension = red;
+export const settings = defaultSettingsRed;
+registerTheme(id, { extension, settings, isDark, label, uiTheme });
+__registerTheme({ id, label, uiTheme, path: "./themes/red.ts" });

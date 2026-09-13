@@ -1,0 +1,39 @@
+{
+  "id": "acme.sidebar-counter",
+  "name": "sidebar-counter",
+  "displayName": "Sidebar Counter",
+  "description": "Smoke test Fase 3 views — Webview View + TreeDataProvider counter in sidebar.",
+  "version": "0.1.0",
+  "publisher": "acme",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onView:acme.sidebarCounterView", "onCommand:acme.sidebarCounter.increment", "onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "acme.counterContainer", "title": "Counter", "icon": "$(extensions)" }
+      ]
+    },
+    "views": {
+      "acme.counterContainer": [
+        { "id": "acme.sidebarCounterView", "name": "Counter", "type": "webview", "when": "view == acme.counterContainer" },
+        { "id": "acme.counterTree", "name": "Counter Tree", "type": "tree", "when": "view == acme.counterContainer" }
+      ]
+    },
+    "commands": [
+      { "command": "acme.sidebarCounter.increment", "title": "Increment Counter", "category": "Counter" },
+      { "command": "acme.sidebarCounter.reset", "title": "Reset Counter", "category": "Counter" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "acme.sidebarCounter.increment", "group": "navigation", "when": "view == acme.sidebarCounterView" }
+      ],
+      "view/item/context": [
+        { "command": "acme.sidebarCounter.reset", "group": "inline", "when": "view == acme.counterTree" }
+      ]
+    }
+  },
+  "permissions": ["fs:workspace-read"]
+}

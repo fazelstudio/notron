@@ -1,0 +1,8 @@
+{
+  "name": "language-support",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "scripts": { "build": "notron-sdk build" },
+  "dependencies": { "notron-sdk": "^0.1.0" }
+}

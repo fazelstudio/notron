@@ -1,3 +1,9 @@
+/**
+ * Palette
+ *
+ * State store for palette.
+ */
+
 import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { Fzf } from 'fzf';
@@ -28,7 +34,7 @@ function createPaletteStore() {
     subscribe,
     initItems(items: PaletteItem[]) {
       const fzf = new Fzf(items, {
-        selector: (item) => `${item.label} ${item.keywords?.join(' ') ?? ''}`,
+        selector: (item) => `${item.label} ${item.description ?? ''} ${item.keywords?.join(' ') ?? ''}`,
         limit: FZF_LIMIT,
       });
       set({ items, fzfInstance: fzf, isLoaded: true });

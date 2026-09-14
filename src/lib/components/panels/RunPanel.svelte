@@ -1,3 +1,9 @@
+<!--
+ * Run Panel
+ *
+ * Sidebar panel for running and debugging launch configurations.
+-->
+
 <script lang="ts">
   import { runStore } from '../../stores/run';
   import { editorStore } from '../../stores/editor';
@@ -91,39 +97,39 @@
 </script>
 
 <div class="h-full flex flex-col bg-canvas text-primary overflow-hidden font-sans select-none">
-  <div class="flex items-center gap-2 h-9 px-4 uppercase text-[11px] font-bold tracking-wider text-secondary shrink-0">
+  <div class="flex items-center gap-2 h-8 px-2 uppercase text-[length:var(--nt-chrome-font-sm)] font-bold tracking-wider text-secondary shrink-0">
     <span>RUN</span>
   </div>
 
   <div class="flex-1 min-h-0 flex flex-col">
     <div class="flex-1 overflow-y-auto hover-scrollbar">
       <div class="border-b border-subtle">
-        <div class="px-5 pt-2 pb-4 space-y-4">
+        <div class="px-2 pt-1 pb-2 space-y-2">
           <DropdownMenu items={configMenuItems} class="w-full" align="right" matchWidth>
             {#snippet trigger()}
               <div
-                class="w-full h-6 bg-panel-2 border border-subtle text-[12px] text-primary outline-none px-2 rounded-sm hover:border-accent focus:border-accent flex items-center justify-between cursor-pointer"
+                class="w-full h-6 bg-panel-2 border border-subtle text-xs text-primary outline-none px-2 rounded-[2px] hover:border-accent focus:border-accent flex items-center justify-between"
               >
                 <span class="truncate">
                   {selectedConfig ? selectedConfig.name : 'No Configurations'}
                 </span>
-                <ChevronDown size={14} class="shrink-0 opacity-70" />
+                <ChevronDown size={12} class="shrink-0 opacity-70" />
               </div>
             {/snippet}
           </DropdownMenu>
 
           <div class="flex items-center gap-1.5">
             <button
-              class="flex items-center justify-center gap-1.5 flex-1 h-7 border border-accent bg-accent text-on-accent hover:bg-accent-hover text-[13px] rounded-sm transition-colors font-medium"
+              class="flex items-center justify-center gap-1.5 flex-1 h-6 border border-accent bg-accent text-on-accent hover:bg-accent-hover text-xs rounded-[2px] font-medium"
               onclick={run}
               title="Run the selected configuration in the integrated terminal"
             >
-              <Play size={13} fill="currentColor" />
+              <Play size={12} fill="currentColor" />
               Run
             </button>
             {#if isRunning()}
               <button
-                class="flex items-center justify-center gap-1.5 w-16 h-7 border border-subtle bg-panel-2 hover:bg-hover hover:border-error text-[12px] rounded-sm transition-colors"
+                class="flex items-center justify-center gap-1.5 w-16 h-6 border border-subtle bg-panel-2 hover:bg-hover hover:border-error text-xs rounded-[2px]"
                 onclick={stop}
                 title="Stop all runs started from Notron"
               >
@@ -135,7 +141,7 @@
 
           {#if preview}
             <div
-              class="px-2 py-1.5 bg-panel border border-subtle rounded-sm text-[10.5px] leading-snug text-muted break-all whitespace-pre-wrap max-h-20 overflow-y-auto hover-scrollbar"
+              class="px-1.5 py-1 bg-panel border border-subtle rounded-[2px] text-[length:var(--nt-chrome-font-tip)] leading-snug text-muted break-all whitespace-pre-wrap max-h-20 overflow-y-auto hover-scrollbar"
               title="Command preview"
             >
               {preview}
@@ -145,7 +151,7 @@
           {#if isSelectedDetected}
             <div class="flex items-center gap-1">
               <button
-                class="flex-1 h-6 border border-subtle text-[11px] text-secondary hover:text-primary hover:bg-hover rounded-sm transition-colors"
+                class="flex-1 h-6 border border-subtle text-[length:var(--nt-chrome-font-sm)] text-secondary hover:text-primary hover:bg-hover rounded-[2px]"
                 onclick={saveSelectedConfig}
               >
                 Save as launch configuration
@@ -153,22 +159,22 @@
             </div>
           {/if}
 
-          <div class="space-y-4">
-            <p class="text-[12px] text-secondary leading-snug">
+          <div class="space-y-2">
+            <p class="text-xs text-secondary leading-snug">
               <button class="link-button" onclick={() => commandRegistry.execute('run.openFileForRunning')}>Open a file</button> which can be run.
             </p>
 
-            <p class="text-[12px] text-secondary leading-snug">
+            <p class="text-xs text-secondary leading-snug">
               To customize Run <button class="link-button" onclick={() => commandRegistry.execute('run.createLaunchJson')}>create a launch.json file</button>.
             </p>
 
             {#if launchJsonExists}
-              <p class="text-[12px] text-secondary leading-snug">
+              <p class="text-xs text-secondary leading-snug">
                 <button class="link-button" onclick={() => commandRegistry.execute('run.openLaunchJson')}>Open launch.json</button>.
               </p>
             {/if}
 
-            <p class="text-[11px] text-muted leading-snug">
+            <p class="text-[length:var(--nt-chrome-font-sm)] text-muted leading-snug">
               Notron runs the selected configuration in the integrated terminal.<br />
               Shortcuts: F5 run · Ctrl+F5 current file · Shift+F5 stop.
             </p>

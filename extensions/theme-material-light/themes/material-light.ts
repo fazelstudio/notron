@@ -1,2 +1,7 @@
-// placeholder for material-light
+/**
+ * Material Light Theme
+ *
+ * Theme definition placeholder for material-light.
+ */
+
 export {};

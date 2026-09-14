@@ -198,8 +198,24 @@ export interface HostOptions {
  extensionPathBase?: string;
  eventBus?: NotronEventBus;
  globalMemento?: Memento;
+ /** Returns whether the current workspace has been explicitly trusted. */
+ isWorkspaceTrusted?: () => boolean;
  // logger for host-level messages
  hostLogChannel?: OutputChannel;
+}
+
+function activationEventMatches(
+ event: string,
+ activationEvents: ExtensionManifest['activationEvents'],
+): boolean {
+ return activationEvents.some((activation) => {
+   if (activation === '*' || activation === event) return true;
+   if (event.endsWith(':*') && activation.startsWith(event.slice(0, -1))) return true;
+   if (activation.endsWith(':*')) {
+     return event.startsWith(activation.slice(0, -1));
+   }
+   return false;
+ });
 }
 
 export class ExtensionHost {
@@ -210,10 +226,12 @@ export class ExtensionHost {
  private bus: NotronEventBus;
  private hostLog: OutputChannel;
  private hostVersion: string;
+ private isWorkspaceTrusted: () => boolean;
 
  constructor(options: HostOptions = {}) {
  this.bus = options.eventBus ?? new NotronEventBus();
  this.hostVersion = options.hostVersion ?? '0.1.0';
+ this.isWorkspaceTrusted = options.isWorkspaceTrusted ?? (() => true);
  this.hostLog =
  options.hostLogChannel ?? createOutputChannel('Extension Host');
  }
@@ -234,8 +252,35 @@ export class ExtensionHost {
  return this.extensions.get(id);
  }
 
+ /** Deactivate, dispose, and remove one extension from the host. */
+ async removeExtension(id: string): Promise<void> {
+   const entry = this.extensions.get(id);
+   if (!entry) return;
+   if (entry.activated && entry.module.deactivate) {
+     try {
+       const result = entry.module.deactivate();
+       if (result instanceof Promise) await result;
+     } catch (error) {
+       const wrapped = new ExtensionRuntimeError(id, 'deactivate', error);
+       this.hostLog.appendLine(`[ExtensionHost] Deactivate failed for ${id}: ${wrapped.message}`);
+     }
+   }
+   try {
+     entry.context.dispose();
+   } catch (error) {
+     this.hostLog.appendLine(`[ExtensionHost] Dispose failed for ${id}: ${String(error)}`);
+   }
+   this.extensions.delete(id);
+   this.activationOrder = this.activationOrder.filter((extensionId) => extensionId !== id);
+   this.contributions.delete(id);
+ }
+
  /** Register extensions before activation — performs dependency sort. */
- register(manifests: ExtensionManifest[], modules: Map<string, ExtensionModule>): void {
+ register(
+  manifests: ExtensionManifest[],
+  modules: Map<string, ExtensionModule>,
+  extensionPaths?: Map<string, string>,
+ ): void {
  const { order, circular, missing } = topologicalSort(manifests);
 
  // mark circular as failed
@@ -263,7 +308,11 @@ export class ExtensionHost {
  // circular — already logged
  const mod = modules.get(m.id);
  if (mod) {
- const ctx = new ExtensionContext({ id: m.id });
+ const ctx = new ExtensionContext({
+  id: m.id,
+  extensionPath: extensionPaths?.get(m.id),
+  permissions: m.permissions,
+ });
  this.extensions.set(m.id, {
  manifest: m,
  module: mod,
@@ -275,14 +324,23 @@ export class ExtensionHost {
  }
  }
 
- this.activationOrder = order;
+ // Registration is incremental so packages discovered after startup do not
+ // hide built-in extensions from later activation and shutdown events.
+ this.activationOrder = [
+  ...this.activationOrder,
+  ...order.filter((id) => !this.activationOrder.includes(id)),
+ ];
  for (const m of sortedManifests) {
  const mod = modules.get(m.id);
  if (!mod) {
  this.hostLog.appendLine(`[ExtensionHost] No module found for ${m.id} — skipped`);
  continue;
  }
- const ctx = new ExtensionContext({ id: m.id });
+ const ctx = new ExtensionContext({
+  id: m.id,
+  extensionPath: extensionPaths?.get(m.id),
+  permissions: m.permissions,
+ });
  this.extensions.set(m.id, {
  manifest: m,
  module: mod,
@@ -301,12 +359,11 @@ export class ExtensionHost {
  }
  }
 
- /** Activate all registered extensions in dependency order with error isolation. */
- async activateAll(): Promise<void> {
- for (const id of this.activationOrder) {
- if (this.circularIds.has(id)) continue;
+ private async activateExtension(id: string): Promise<void> {
+ if (this.circularIds.has(id)) return;
  const entry = this.extensions.get(id);
- if (!entry) continue;
+ if (!entry) return;
+ if (entry.activated || entry.activationError) return;
  // skip if dependency failed
  const deps = entry.manifest.extensionDependencies ?? [];
  const failedDep = deps.find((dep) => {
@@ -320,7 +377,7 @@ export class ExtensionHost {
  const err = new Error(`Skipped due to dependency failure: ${reason}`);
  entry.activationError = err;
  this.hostLog.appendLine(`[ExtensionHost] ${id} skipped: ${err.message}`);
- continue;
+ return;
  }
 
  // version check
@@ -329,7 +386,14 @@ export class ExtensionHost {
  entry.activationError = err;
  this.hostLog.appendLine(`[ExtensionHost] ${id} incompatible: ${err.message}`);
  entry.context.logChannel.appendLine(`[host] Incompatible: ${err.message}`);
- continue;
+ return;
+ }
+ // Extensions without declared permissions remain usable in restricted
+ // workspaces. Extensions that request filesystem, shell, network, or
+ // clipboard access wait until the user explicitly trusts the workspace.
+ if ((entry.manifest.permissions?.length ?? 0) > 0 && !this.isWorkspaceTrusted()) {
+  entry.context.logChannel.appendLine('[host] Activation deferred until this workspace is trusted.');
+  return;
  }
 
  try {
@@ -347,6 +411,19 @@ export class ExtensionHost {
  // do not throw — isolation: continue to next extension
  }
  }
+
+ /** Activate extensions matching a host activation event. */
+ async activateByEvent(event: string): Promise<void> {
+ for (const id of this.activationOrder) {
+ const entry = this.extensions.get(id);
+ if (!entry || !activationEventMatches(event, entry.manifest.activationEvents)) continue;
+ await this.activateExtension(id);
+ }
+ }
+
+ /** Activate startup extensions in dependency order with error isolation. */
+ async activateAll(): Promise<void> {
+ await this.activateByEvent('onStartupFinished');
  }
 
  /** Deactivate all in reverse activation order with error isolation. */

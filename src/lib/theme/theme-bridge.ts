@@ -4,7 +4,7 @@
  * Bridges CodeMirror theme settings to CSS tokens for the shell and editor.
  */
 
-import { THEMES } from './registry';
+import { getTheme, getAllThemes } from './registry';
 import { DEFAULT_THEME } from '../constants';
 import { highContrastSemanticAliases } from './high-contrast';
 
@@ -117,10 +117,21 @@ export function extractPrimitives(themeName: string): NormalizedPrimitives | nul
   let effectiveTheme = themeName;
   if (themeName === 'system') {
     const isDarkOS = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    effectiveTheme = isDarkOS ? DEFAULT_THEME : 'notron-light';
+    if (isDarkOS) {
+      effectiveTheme = DEFAULT_THEME;
+    } else {
+      // Pick first light theme from registry instead of hard-coded id.
+      try {
+        const all = getAllThemes();
+        const light = Object.entries(all).find(([, t]) => !t.isDark && !!t.settings);
+        effectiveTheme = light?.[0] ?? 'notron-light';
+      } catch {
+        effectiveTheme = 'notron-light';
+      }
+    }
   }
 
-  const themeObj = (THEMES as Record<string, any>)[effectiveTheme];
+  const themeObj = getTheme(effectiveTheme) as any;
   const s = themeObj?.settings;
   if (!s) return null;
 
@@ -245,7 +256,7 @@ export function resolveSemanticTokens(prim: NormalizedPrimitives): Record<string
     '--nt-sidebar-header-bg': bgElevated,
     '--nt-sidebar-border': border,
 
-    // Editor — SATU warna untuk gutter + content + minimap track
+    // Editor — unified color for gutter, content, and minimap track.
     '--nt-editor-bg': bgBase,
     '--nt-editor-fg': fgBase,
     '--nt-editor-gutter-fg': gutterFg,

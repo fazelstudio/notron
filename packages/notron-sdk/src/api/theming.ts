@@ -16,21 +16,38 @@ export interface ThemeContribution {
   id: string;
   label: string;
   uiTheme: 'light' | 'dark';
-  path: string;
+  path?: string;
   extensionId?: string;
   isHighContrast?: boolean;
+  // Runtime payload — populated when an extension registers via SDK.
+  extension?: unknown;
+  settings?: unknown;
+  isDark?: boolean;
 }
+
 export interface IconThemeContribution {
   id: string;
   label: string;
-  path: string;
+  path?: string;
   extensionId?: string;
+}
+
+export interface IconThemeProvider {
+  getFileIcon?: (name: string) => unknown;
+  getFileIconSvg?: (name: string, size: number) => string;
+  getFolderIconSvg?: (name: string, size: number, isOpen: boolean) => string;
+  getRootFolderIconSvg?: (size: number, isOpen: boolean) => string;
+  isMaterial?: boolean;
+  // Allow extra provider-specific keys.
+  [key: string]: unknown;
 }
 
 export interface ThemingDelegate {
   getActiveColorTheme(): ColorTheme;
   onDidChangeActiveColorTheme: Event<ColorTheme>;
   getContributedThemes?(): ThemeContribution[];
+  getContributedIconThemes?(): IconThemeContribution[];
+  getIconThemeProvider?(id: string): IconThemeProvider | undefined;
 }
 
 let themingDelegate: ThemingDelegate | null = null;
@@ -49,6 +66,7 @@ const themeEmitter = new Emitter<ColorTheme>();
 const contributedThemes: ThemeContribution[] = [];
 const contributedIconThemes: IconThemeContribution[] = [];
 const contributedProductIconThemes: IconThemeContribution[] = [];
+const iconThemeProviders = new Map<string, IconThemeProvider>();
 
 export function getActiveColorTheme(): ColorTheme {
   if (themingDelegate?.getActiveColorTheme) return themingDelegate.getActiveColorTheme();
@@ -72,20 +90,31 @@ export function __getActiveThemeFallback(): ColorTheme {
 }
 
 export function __registerTheme(contrib: ThemeContribution): Disposable {
-  const existing = contributedThemes.findIndex((theme) => theme.id === contrib.id);
-  if (existing >= 0) contributedThemes[existing] = contrib;
-  else contributedThemes.push(contrib);
+  // Merge with existing entry so manifest contributions (path only) and runtime
+  // extension payloads (extension/settings) coalesce into one record.
+  const idx = contributedThemes.findIndex((t) => t.id === contrib.id);
+  if (idx >= 0) {
+    contributedThemes[idx] = { ...contributedThemes[idx], ...contrib };
+  } else {
+    contributedThemes.push({ ...contrib });
+  }
+  const stored = contributedThemes[idx >= 0 ? idx : contributedThemes.length - 1]!;
+  void stored;
   return toDisposable(() => {
-    const idx = contributedThemes.findIndex((theme) => theme.id === contrib.id);
-    if (idx !== -1) contributedThemes.splice(idx, 1);
+    const cur = contributedThemes.findIndex((t) => t.id === contrib.id);
+    if (cur !== -1) contributedThemes.splice(cur, 1);
   });
 }
 
-export function __registerIconTheme(contrib: IconThemeContribution): Disposable {
-  contributedIconThemes.push(contrib);
+export function __registerIconTheme(contrib: IconThemeContribution, provider?: IconThemeProvider): Disposable {
+  const idx = contributedIconThemes.findIndex((t) => t.id === contrib.id);
+  if (idx >= 0) contributedIconThemes[idx] = { ...contributedIconThemes[idx], ...contrib };
+  else contributedIconThemes.push({ ...contrib });
+  if (provider) iconThemeProviders.set(contrib.id, provider);
   return toDisposable(() => {
-    const idx = contributedIconThemes.indexOf(contrib);
-    if (idx !== -1) contributedIconThemes.splice(idx, 1);
+    const cur = contributedIconThemes.findIndex((t) => t.id === contrib.id);
+    if (cur !== -1) contributedIconThemes.splice(cur, 1);
+    if (provider && iconThemeProviders.get(contrib.id) === provider) iconThemeProviders.delete(contrib.id);
   });
 }
 
@@ -103,23 +132,64 @@ export function __getContributedThemes(): ThemeContribution[] {
 }
 
 export function __getContributedIconThemes(): IconThemeContribution[] {
+  if (themingDelegate?.getContributedIconThemes) return themingDelegate.getContributedIconThemes();
   return [...contributedIconThemes];
+}
+
+/** Return color themes contributed by the active extension set. */
+export function getContributedThemes(): ThemeContribution[] {
+  return __getContributedThemes();
+}
+
+/** Return file icon themes contributed by the active extension set. */
+export function getContributedIconThemes(): IconThemeContribution[] {
+  return __getContributedIconThemes();
 }
 
 export function __getContributedProductIconThemes(): IconThemeContribution[] {
   return [...contributedProductIconThemes];
 }
 
+export function __getIconThemeProvider(id: string): IconThemeProvider | undefined {
+  if (themingDelegate?.getIconThemeProvider) {
+    const viaDelegate = themingDelegate.getIconThemeProvider(id);
+    if (viaDelegate) return viaDelegate;
+  }
+  return iconThemeProviders.get(id);
+}
+
 export function __clearTheming(): void {
   contributedThemes.length = 0;
   contributedIconThemes.length = 0;
   contributedProductIconThemes.length = 0;
+  iconThemeProviders.clear();
   activeTheme = { id: 'editor-dark', kind: 'dark', label: 'Notron Dark' };
+}
+
+// Public SDK surface for extensions — stable names without __ prefix.
+
+/**
+ * Register a color theme at runtime. Extensions should call this from `activate()`
+ * instead of importing core registries.
+ */
+export function registerTheme(contrib: ThemeContribution): Disposable {
+  return __registerTheme(contrib);
+}
+
+/**
+ * Register an icon theme at runtime with an optional icon provider.
+ */
+export function registerIconTheme(contrib: IconThemeContribution, provider?: IconThemeProvider): Disposable {
+  return __registerIconTheme(contrib, provider);
 }
 
 export const theming = {
   getActiveColorTheme,
   onDidChangeActiveColorTheme,
+  getContributedThemes,
+  getContributedIconThemes,
+  registerTheme,
+  registerIconTheme,
 } as const;
 
 export const themingNamespace = theming;

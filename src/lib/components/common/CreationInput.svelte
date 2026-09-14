@@ -1,6 +1,13 @@
+<!--
+ * Creation Input
+ *
+ * Inline input for creating a new file or folder in the explorer.
+-->
+
 <script lang="ts">
   import { fileService } from '../../services/fileService';
   import { uiStore } from '../../stores/ui';
+  import { TREE_INDENT_PX, TREE_ROW_HEIGHT_PX } from '../../constants';
   
   let { type, parentPath, depth = 0 }: { type: 'file' | 'folder'; parentPath: string; depth?: number } = $props();
   let val = $state('');
@@ -27,7 +34,7 @@
   }
 </script>
 
-<div class="flex items-center gap-1.5 pr-2 py-1 w-full text-primary border border-transparent" style="padding-left: {depth * 12 + 8}px; height: 26px;">
+<div class="flex items-center gap-1.5 pr-2 py-1 w-full text-primary border border-transparent" style="padding-left: {depth * TREE_INDENT_PX + 8}px; height: {TREE_ROW_HEIGHT_PX}px;">
   <span class="w-3.5 shrink-0 inline-block"></span>
   <span class="shrink-0 text-accent">
     {#if type === 'folder'}

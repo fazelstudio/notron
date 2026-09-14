@@ -1,3 +1,9 @@
+<!--
+ * Clone Repository Modal
+ *
+ * Dialog for cloning a git repository into a local folder.
+-->
+
 <script lang="ts">
   import { eventBus } from '../../utils/eventBus';
   import { uiStore } from '../../stores/ui';
@@ -101,8 +107,8 @@
 </script>
 
 <Modal {isOpen} title="Clone Repository" onClose={handleClose} widthClass="max-w-md">
-  <div class="p-4 flex flex-col gap-4">
-    <div class="flex flex-col gap-1.5">
+  <div class="p-2 flex flex-col gap-2">
+    <div class="flex flex-col gap-1">
       <span class="text-xs text-muted">Repository URL</span>
       <input
         type="url"
@@ -110,26 +116,26 @@
         placeholder="https://github.com/user/repo.git"
         disabled={cloning}
         spellcheck="false"
-        class="w-full text-sm px-3 py-1.5 rounded border border-subtle bg-surface-3 text-primary placeholder:text-muted outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+        class="w-full text-xs px-2 h-[var(--nt-control-height)] rounded-[2px] border border-subtle bg-surface-3 text-primary placeholder:text-muted outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
         onkeydown={(e) => { if (e.key === 'Enter') handleClone(); }}
       />
     </div>
 
-    <div class="flex flex-col gap-1.5">
+    <div class="flex flex-col gap-1">
       <span class="text-xs text-muted">Parent folder</span>
-      <div class="flex gap-2">
+      <div class="flex gap-1.5">
         <input
           type="text"
           bind:value={destPath}
           placeholder="C:\Users\you\Projects"
           disabled={cloning}
           spellcheck="false"
-          class="flex-1 min-w-0 text-sm px-3 py-1.5 rounded border border-subtle bg-surface-3 text-primary placeholder:text-muted outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+          class="flex-1 min-w-0 text-xs px-2 h-[var(--nt-control-height)] rounded-[2px] border border-subtle bg-surface-3 text-primary placeholder:text-muted outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onclick={handleBrowse}
           disabled={cloning}
-          class="shrink-0 text-xs px-3 py-1.5 rounded border border-subtle bg-surface-2 hover:bg-hover transition-colors text-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          class="shrink-0 nt-control border border-subtle bg-surface-2 hover:bg-hover text-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >Browse</button>
       </div>
       {#if destPath && isValidRepoUrl(repoUrl)}
@@ -140,14 +146,14 @@
     </div>
 
     {#if cloning}
-      <div class="flex flex-col gap-1.5">
+      <div class="flex flex-col gap-1">
         <div class="flex items-center gap-2 text-xs text-primary">
-          <svg class="animate-spin shrink-0 text-accent" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+          <svg class="animate-spin shrink-0 text-accent" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
           <span class="truncate">{progress?.message || `Cloning repository ${cloneStatus?.name ?? ''}...`}</span>
         </div>
         <div class="w-full h-1 rounded-full bg-surface-3 overflow-hidden">
           {#if progress?.percent != null}
-            <div class="h-full bg-accent transition-all duration-150" style="width: {progress.percent}%"></div>
+            <div class="h-full bg-accent" style="width: {progress.percent}%"></div>
           {:else}
             <div class="h-full w-1/3 bg-accent rounded-full animate-pulse"></div>
           {/if}
@@ -157,16 +163,16 @@
   </div>
 
   {#snippet footer()}
-    <div class="flex justify-end gap-3 w-full">
+    <div class="flex justify-end gap-2 w-full">
       <button
         onclick={handleClose}
         disabled={cloning}
-        class="px-4 py-2 text-sm rounded bg-surface-2 hover:bg-hover transition-colors text-primary border border-subtle disabled:opacity-50 disabled:cursor-not-allowed"
+        class="nt-control bg-surface-2 hover:bg-hover text-primary border border-subtle disabled:opacity-50 disabled:cursor-not-allowed"
       >Cancel</button>
       <button
         onclick={handleClone}
         disabled={cloning || !isValidRepoUrl(repoUrl) || !destPath.trim()}
-        class="px-4 py-2 text-sm rounded bg-accent hover:bg-accent-hover transition-colors text-on-accent border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+        class="nt-control bg-accent hover:bg-accent-hover text-on-accent border border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
       >Clone It</button>
     </div>
   {/snippet}

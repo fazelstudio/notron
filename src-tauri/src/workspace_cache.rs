@@ -1,6 +1,7 @@
-// Workspace Cache
-//
-// Rust module.
+//! Workspace Cache
+//! 
+//! In-memory cache for explorer directory listings.
+
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{ipc::Channel, State};
@@ -115,16 +116,9 @@ impl WorkspaceCache {
 /// Blocking one-level directory scan. Runs inside spawn_blocking so it never
 /// blocks the webview / event loop.
 ///
-/// **VS Code parity:**
-///
-/// VS Code Explorer shows ALL dot-files by default (`.gitignore`, `.github`,
-/// `.env`, etc.). Only the hard-exclude list (`.git`, `.svn`, `.DS_Store`, …)
-/// is hidden. The old `ignore` crate `hidden()` flag was incorrectly hiding
-/// every dot-prefixed file regardless — this is now fixed.
-///
-/// Additionally, each entry is checked against the workspace `.gitignore`
-/// (via the `ignore` crate) and the result is stored in `FileNode::is_ignored`
-/// so the frontend can render them with a dimmed colour like VS Code does.
+/// Dot-files are shown by default and only the hard-exclude list is hidden.
+/// Each entry is checked against the workspace gitignore and the result is stored
+/// in `FileNode::is_ignored` so the frontend can render them dimmed.
 pub fn scan_dir_blocking(path: &str, _show_dot_files: bool) -> Result<Vec<crate::file_ops::FileNode>, String> {
     let dir = std::path::Path::new(path);
     if !dir.is_dir() {
@@ -177,7 +171,7 @@ pub fn scan_dir_blocking(path: &str, _show_dot_files: bool) -> Result<Vec<crate:
         let entry_path = entry.path();
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
 
-        // Check if this entry is gitignored (shown but dimmed, like VS Code).
+        // Check if this entry is gitignored (shown but dimmed).
         let is_ignored = gitignore
             .as_ref()
             .map(|gi| gi.matched_path_or_any_parents(&entry_path, is_dir).is_ignore())

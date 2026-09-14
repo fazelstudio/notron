@@ -1,7 +1,7 @@
 /**
- * Svelte.Config
+ * Svelte Config
  *
- * Svelte compiler configuration..
+ * Svelte compiler configuration.
  */
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 

@@ -1,9 +1,7 @@
 /**
  * Snippet Registry
  *
- * Central store for per-language snippets. Each language registers its snippets
- * as data (JSON-like), without touching the snippet engine.
- * Mirrors VS Code's snippet contribution (data per language).
+ * Central store for per-language snippets registered as data.
  */
 
 export interface Snippet {

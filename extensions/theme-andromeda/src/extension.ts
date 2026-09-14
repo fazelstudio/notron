@@ -1,11 +1,14 @@
 import { andromeda, defaultSettingsAndromeda } from '@uiw/codemirror-themes-all';
-import { registerTheme } from '../../../src/lib/theme/registry';
-import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+import { theming, type ExtensionContext } from 'notron-sdk';
 export const id = "andromeda";
 export const label = "Andromeda";
 export const isDark = true;
 export const uiTheme = "dark";
 export const extension = andromeda;
 export const settings = defaultSettingsAndromeda;
-registerTheme(id, { extension, settings, isDark, label, uiTheme });
-__registerTheme({ id, label, uiTheme, path: "./themes/andromeda.ts" });
+
+export async function activate(context: ExtensionContext): Promise<void> {
+  context.subscriptions.push(theming.registerTheme({ id, label, uiTheme: uiTheme as any, path: "./themes/andromeda.ts", extension, settings, isDark }));
+}
+
+export async function deactivate(): Promise<void> {}

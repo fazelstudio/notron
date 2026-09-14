@@ -17,6 +17,7 @@ export type {
 export { type CommandContribution as ApiCommandContribution } from './api/extensions.js';
 export { type KeybindingContribution as ApiKeybindingContribution } from './api/extensions.js';
 export * from './api/events.js';
+export * from './api/activity.js';
 
 // Namespaced API (primary import style: `import { commands, window, workspace } from 'notron-sdk'`)
 export * as commandsModule from './api/commands.js';
@@ -33,6 +34,8 @@ export * as snippetsModule from './api/snippets.js';
 export * as authenticationModule from './api/authentication.js';
 export * as terminalModule from './api/terminal.js';
 export * as extensionsModule from './api/extensions.js';
+export * as discordModule from './api/discord.js';
+export * as activityModule from './api/activity.js';
 export { commands } from './api/commands.js';
 export { window, windowNamespace } from './api/window.js';
 export { workspace, workspaceNamespace, fs as workspaceFs } from './api/workspace.js';
@@ -47,4 +50,42 @@ export { snippets, snippetsNamespace } from './api/snippets.js';
 export { authentication, authenticationNamespace } from './api/authentication.js';
 export { terminal, terminalNamespace } from './api/terminal.js';
 export { extensions, extensionsNamespace } from './api/extensions.js';
+export { setExtensionsDelegate, getExtensionsDelegate } from './api/extensions.js';
+export { discord, discordNamespace } from './api/discord.js';
+export { activity } from './api/activity.js';
+export {
+  __registerTheme,
+  __registerIconTheme,
+  __registerProductIconTheme,
+  __getContributedThemes,
+  __getContributedIconThemes,
+  __getContributedProductIconThemes,
+  __getIconThemeProvider,
+  __clearTheming,
+  __setActiveTheme,
+  __getActiveThemeFallback,
+  setThemingDelegate,
+  getThemingDelegate,
+} from './api/theming.js';
+export { setWorkspaceDelegate, getWorkspaceDelegate, __setWorkspaceFolders as __setSdkWorkspaceFolders } from './api/workspace.js';
+export {
+setConfigurationContributionDelegate,
+__registerConfigurationContribution,
+registerConfiguration,
+} from './api/workspace.js';
+export { setWindowDelegate, getWindowDelegate } from './api/window.js';
+export { setViewsDelegate, __getTreeDataProviders } from './api/views.js';
+export { setMenusDelegate } from './api/menus.js';
+export { setDiscordDelegate, getDiscordDelegate, initDiscordPresence, setDiscordActivity, clearDiscordPresence } from './api/discord.js';
+export { setActivityDelegate, getActivityDelegate, initActivity, setActivity, clearActivity } from './api/activity.js';
+export { __setCommandMirror } from './api/commands.js';
+export { __setActiveTextEditor, __setVisibleTextEditors, __setActiveTab } from './api/window.js';
+export { __setWorkspaceFolders } from './api/workspace.js';
+export {
+  __getRegisteredIds as __getCommandIds,
+  __clearRegistry as __clearCommands,
+  setCommandDelegate,
+  setCommandContributionDelegate,
+  __registerCommandContribution,
+} from './api/commands.js';
 export * from './api/types.js';

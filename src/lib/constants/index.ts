@@ -110,13 +110,30 @@ export const MAX_SIDEBAR_WIDTH = 600;
 /** Width of the minimap panel when enabled (must match .cm-minimap-container width in app.css). */
 export const MINIMAP_WIDTH = 150;
 /** Width of the native WebKit scrollbar track used by .cm-scroller. */
-export const EDITOR_SCROLLBAR_WIDTH = 14;
+export const EDITOR_SCROLLBAR_WIDTH = 10;
 
 // Status bar / toasts
 export const DEFAULT_STATUS_MS = 3000;
 export const STATUS_UPDATE_DELAY_MS = 500;
 export const TOAST_DISMISS_MS = 5000;
 export const MAX_TOASTS = 5;
+
+// Native density geometry (mirrors --nt-* tokens in App.css)
+export const MENU_ITEM_MIN_HEIGHT_PX = 26;
+export const TREE_ROW_HEIGHT_PX = 26;
+export const TREE_INDENT_PX = 12;
+export const TAB_HEIGHT_PX = 32;
+export const STATUSBAR_HEIGHT_PX = 24;
+export const SCROLLBAR_SIZE_PX = 10;
+export const CONTROL_HEIGHT_PX = 26;
+/** Instant hover/press feedback, no visible glide. */
+export const MOTION_INSTANT_MS = 80;
+/** Fastest overlay fade allowed, used sparingly. */
+export const MOTION_FAST_MS = 100;
+/** Tooltip appears after a short idle, hides immediately on leave. */
+export const TOOLTIP_SHOW_DELAY_MS = 300;
+export const TOOLTIP_CURSOR_GAP_PX = 6;
+export const TOOLTIP_VIEWPORT_GAP_PX = 6;
 
 // Palette / command search
 export const FZF_LIMIT = 15;

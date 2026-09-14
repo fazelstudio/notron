@@ -1,3 +1,9 @@
+<!--
+ * Terminal Instance
+ *
+ * Individual integrated terminal backed by tauri-pty.
+-->
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Terminal } from 'xterm';

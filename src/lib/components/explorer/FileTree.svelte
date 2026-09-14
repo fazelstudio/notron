@@ -1,3 +1,9 @@
+<!--
+ * File Tree
+ *
+ * Virtualized explorer tree with lazy loading, drag and drop, and git decorations.
+-->
+
 <script module lang="ts">
   import type { RawFileNode } from '../../utils/treeFlattener';
   import { listen } from '@tauri-apps/api/event';
@@ -170,6 +176,7 @@
   import { eventBus } from '../../utils/eventBus';
   import { getGitStatusTooltip } from '../../utils/gitStatusStyles';
   import { portal } from '../../utils/menuPosition';
+  import { TOOLTIP_SHOW_DELAY_MS } from '../../constants';
 
   interface DirBatchEntry {
     path: string;
@@ -302,7 +309,7 @@
   let nodeCacheVersion = $state(0);
 
   let hoveredPath = $state('');
-  let isMaterialTheme = $derived(getIconProvider(settingsStore.effectiveSettings.icon_theme)?.isMaterial === true);
+  let isMaterialTheme = $derived(typeof (getIconProvider(settingsStore.effectiveSettings.icon_theme) as any)?.getFileIconSvg === 'function');
   let isOffTheme = $derived(settingsStore.effectiveSettings.icon_theme === 'off');
 
   // Tooltip content: full path + git status (format: "path/to/file - Status")
@@ -1963,9 +1970,9 @@
   </div>
 
 {:else if rootChildren.length === 0}
-  <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
+  <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={TOOLTIP_SHOW_DELAY_MS} fontClass="text-[9px]" wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
     <div 
-      class="p-4 text-xs text-muted flex-1 h-full outline-none transition-all {activePath === rootPath ? 'bg-sidebar-2 ring-1 ring-inset ring-focus' : ''}"
+      class="p-4 text-xs text-muted flex-1 h-full outline-none {activePath === rootPath ? 'bg-sidebar-2 ring-1 ring-inset ring-focus' : ''}"
       role="presentation"
       onclick={handleBackgroundClick}
       oncontextmenu={(e) => showContextMenu(e)}
@@ -1979,9 +1986,9 @@
   </Tooltip>
 
 {:else}
-  <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={400} wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
+  <Tooltip content={hoveredTooltip} disabled={!hoveredPath} followCursor={true} hoverDelay={TOOLTIP_SHOW_DELAY_MS} fontClass="text-[9px]" wrapperClass="flex-1 flex flex-col min-h-0 min-w-0">
     <div
-      class="group/tree relative flex-1 h-full outline-none flex flex-col p-2 transition-all {activePath === rootPath ? 'bg-sidebar-2 ring-1 ring-inset ring-focus' : ''}"
+      class="group/tree relative flex-1 h-full outline-none flex flex-col p-2 {activePath === rootPath ? 'bg-sidebar-2 ring-1 ring-inset ring-focus' : ''}"
       role="tree"
       tabindex="0"
       data-node-path={rootPath}
@@ -2036,7 +2043,8 @@
                   <Icon size={14} />
                 {/if}
               {:else if isMaterialTheme}
-                {@const svg = node.creating_type === 'folder' ? ((getIconProvider('material') as any)?.getFolderIconSvg?.(creatingValue || 'new_folder', 14, false) ?? '') : ((getIconProvider('material') as any)?.getFileIconSvg?.(creatingValue || 'new_file', 14) ?? '')}
+                {@const __activeProvider = getIconProvider(settingsStore.effectiveSettings.icon_theme) as any}
+                {@const svg = node.creating_type === 'folder' ? (__activeProvider?.getFolderIconSvg?.(creatingValue || 'new_folder', 14, false) ?? '') : (__activeProvider?.getFileIconSvg?.(creatingValue || 'new_file', 14) ?? '')}
                 <span class="shrink-0 inline-flex items-center justify-center" style="width:14px;height:14px" aria-hidden="true">{@html svg}</span>
               {/if}
             </span>
@@ -2074,7 +2082,8 @@
                   <Icon size={14} />
                 {/if}
               {:else if isMaterialTheme}
-                {@const svg = node.is_dir ? ((getIconProvider('material') as any)?.getFolderIconSvg?.(renameValue || node.name, 14, false) ?? '') : ((getIconProvider('material') as any)?.getFileIconSvg?.(renameValue || node.name, 14) ?? '')}
+                {@const __activeProvider2 = getIconProvider(settingsStore.effectiveSettings.icon_theme) as any}
+                {@const svg = node.is_dir ? (__activeProvider2?.getFolderIconSvg?.(renameValue || node.name, 14, false) ?? '') : (__activeProvider2?.getFileIconSvg?.(renameValue || node.name, 14) ?? '')}
                 <span class="shrink-0 inline-flex items-center justify-center" style="width:14px;height:14px" aria-hidden="true">{@html svg}</span>
               {/if}
             </span>
@@ -2173,7 +2182,7 @@
     bind:this={ctxMenuElement}
     use:portal
     data-notron-context-menu="true"
-    class="fixed min-w-[180px] rounded-md border p-1 shadow-elevated z-[2147483646] animate-in fade-in duration-100 bg-sidebar-2 border-subtle text-primary"
+    class="fixed min-w-[180px] z-[2147483646] nt-menu-panel"
     style="left: {ctxMenu.x}px; top: {ctxMenu.y}px;"
     role="presentation"
     onclick={(e) => e.stopPropagation()}
@@ -2181,16 +2190,16 @@
   >
     {#each ctxMenu.items as item}
       {#if item.separator}
-        <div class="h-px my-1 bg-subtle"></div>
+        <div class="nt-menu-separator"></div>
       {:else}
         <button
-          class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors {!item.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted cursor-not-allowed'} {item.danger ? 'text-error hover:bg-error/10 hover:text-error' : ''}"
+          class="nt-menu-item justify-between {!item.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted'} {item.danger ? 'text-error hover:bg-error/10 hover:text-error' : ''}"
           disabled={item.disabled}
           onclick={(e) => { e.stopPropagation(); handleCtxItemAction(item); }}
         >
           <span>{item.label}</span>
           {#if item.shortcut}
-            <span class="ml-auto text-[10px] text-muted opacity-80">{item.shortcut}</span>
+            <span class="ml-4 text-[length:var(--nt-chrome-font-tip)] text-muted opacity-80">{item.shortcut}</span>
           {/if}
         </button>
       {/if}
@@ -2205,16 +2214,16 @@
     onClose={cancelDeleteConfirm}
     widthClass="max-w-sm"
   >
-    <div class="p-6">
-      <p class="text-sm opacity-80 mb-4 break-words">
+    <div class="p-2">
+      <p class="text-xs opacity-80 mb-2 break-words">
         Are you sure you want to delete <span class="font-semibold text-primary">
           {deleteConfirmState.targets.length === 1 ? getFileName(deleteConfirmState.targets[0]) : `${deleteConfirmState.targets.length} items`}
         </span>?
       </p>
       {#if deleteConfirmState.requireTyping}
-        <p class="text-xs text-error mb-2">Type "{deleteConfirmState.requireTyping}" to confirm:</p>
+        <p class="text-xs text-error mb-1">Type "{deleteConfirmState.requireTyping}" to confirm:</p>
       {/if}
-      <label class="flex items-center gap-2 cursor-pointer select-none mt-3">
+      <label class="flex items-center gap-2 cursor-pointer select-none mt-2">
         <input
           type="checkbox"
           checked={deleteDontShowAgain}
@@ -2225,11 +2234,11 @@
       </label>
     </div>
     {#snippet footer()}
-      <div class="flex justify-end gap-3 w-full">
-        <button onclick={cancelDeleteConfirm} class="px-4 py-2 text-sm rounded bg-sidebar-2 hover:bg-hover transition-colors text-primary border border-subtle">
+      <div class="flex justify-end gap-2 w-full">
+        <button onclick={cancelDeleteConfirm} class="nt-control bg-sidebar-2 hover:bg-hover text-primary border border-subtle">
           Cancel
         </button>
-        <button onclick={() => confirmDelete()} class="px-4 py-2 text-sm rounded bg-error hover:bg-error/80 transition-colors text-on-accent border border-transparent">
+        <button onclick={() => confirmDelete()} class="nt-control bg-error hover:bg-error/80 text-on-accent border border-transparent">
           Yes, Delete it
         </button>
       </div>
@@ -2242,13 +2251,13 @@
   title="Large Folder Warning"
   onClose={handleLargeFolderCancel}
 >
-  <div class="p-4 text-sm text-primary">
+  <div class="p-2 text-xs text-primary">
     {largeFolderModal.message}
   </div>
   {#snippet footer()}
     <div class="flex justify-end gap-2">
-      <button class="px-4 py-1.5 rounded bg-sidebar-2 hover:bg-active text-primary text-sm transition-colors" onclick={handleLargeFolderCancel}>Cancel</button>
-      <button class="px-4 py-1.5 rounded hover:brightness-110 text-[var(--text-inverse)] text-sm transition-colors" style="background-color: var(--color-warning)" onclick={handleLargeFolderProceed}>Proceed</button>
+      <button class="nt-control bg-sidebar-2 hover:bg-active text-primary" onclick={handleLargeFolderCancel}>Cancel</button>
+      <button class="nt-control text-[var(--text-inverse)]" style="background-color: var(--color-warning)" onclick={handleLargeFolderProceed}>Proceed</button>
     </div>
   {/snippet}
 </Modal>

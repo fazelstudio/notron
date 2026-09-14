@@ -1,8 +1,16 @@
+<!--
+ * Markdown Preview
+ *
+ * Renders markdown content with table of contents and code copy support.
+-->
+
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { ChevronRight, ChevronDown } from 'lucide-svelte';
   import { editorStore } from '../../stores/editor';
   import { themeStore } from '../../stores/theme';
+  import { eventBus } from '../../utils/eventBus';
+  import { dirname, resolvePath } from '../../utils/path';
   import type { TocNode, RenderResult } from '../../utils/markdownRender';
 
   let isDark = $derived($themeStore.isDark);
@@ -24,6 +32,10 @@
   let renderSeq = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
+  function setPreviewLoading(loading: boolean) {
+    eventBus.emit('editor:preview-loading', { path, loading });
+  }
+
   async function doRender() {
     const seq = ++renderSeq;
     const md = content;
@@ -34,6 +46,7 @@
     renderError = false;
     errorMsg = '';
     isRendering = true;
+    setPreviewLoading(true);
 
     // Defer the actual markdown render so the empty tab paints first
     // and the UI stays responsive (no worker = no cross-thread failures).
@@ -47,12 +60,14 @@
         html = result.html;
         toc = result.toc;
         isRendering = false;
+        setPreviewLoading(false);
       } catch (e) {
         if (seq !== renderSeq) return;
         console.error('Markdown render error', e);
         renderError = true;
         errorMsg = e instanceof Error ? e.message : String(e);
         isRendering = false;
+        setPreviewLoading(false);
       }
     }, 0);
   }
@@ -63,6 +78,7 @@
 
   onDestroy(() => {
     if (timer) clearTimeout(timer);
+    setPreviewLoading(false);
   });
 
   function flattenIds(nodes: TocNode[]): string[] {
@@ -158,11 +174,37 @@
       e.preventDefault();
       e.stopPropagation();
       const href = link.getAttribute('href');
-      if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+      if (!href) return;
+
+      // Heading links remain inside the current preview. External schemes
+      // continue to use the system browser; every other href is a workspace
+      // path and follows the normal editor open/replace policy.
+      if (href.startsWith('#')) {
+        const targetId = decodeURIComponent(href.slice(1));
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      const isExternalUrl = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href);
+      if (isExternalUrl) {
         import('@tauri-apps/plugin-opener').then(({ openUrl }) => {
           openUrl(href).catch(() => {});
         }).catch(() => {});
+        return;
       }
+
+      const cleanHref = href.split('#', 1)[0].split('?', 1)[0];
+      if (!cleanHref) return;
+
+      let relativePath = cleanHref;
+      try {
+        relativePath = decodeURIComponent(cleanHref);
+      } catch {
+        // Keep the original href when a malformed escape sequence is present.
+      }
+      eventBus.emit('request-open-file', {
+        path: resolvePath(dirname(path), relativePath),
+      });
       return;
     }
   }
@@ -175,7 +217,7 @@
 
 {#snippet tocItem(node: TocNode)}
   <div class="py-px">
-    <div class="flex items-center rounded-md hover:bg-hover {activeId === node.id ? 'bg-selected/40' : ''}">
+    <div class="flex items-center rounded-[2px] hover:bg-hover {activeId === node.id ? 'bg-selected/40' : ''}">
       {#if node.children.length > 0}
         <button
           class="w-5 h-5 shrink-0 flex items-center justify-center text-muted hover:text-primary rounded"
@@ -248,5 +290,15 @@
 <style>
   :global(.prose h1[id], .prose h2[id], .prose h3[id], .prose h4[id], .prose h5[id], .prose h6[id]) {
     scroll-margin-top: 24px;
+  }
+
+  :global(.prose a) {
+    color: #3794ff;
+    text-decoration: none;
+  }
+
+  :global(.prose a:hover) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 </style>

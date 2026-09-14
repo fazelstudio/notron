@@ -1,2 +1,7 @@
-// placeholder for noctis-lilac
+/**
+ * Noctis Lilac Theme
+ *
+ * Theme definition placeholder for noctis-lilac.
+ */
+
 export {};

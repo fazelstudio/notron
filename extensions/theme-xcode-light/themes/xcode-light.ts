@@ -1,2 +1,7 @@
-// placeholder for xcode-light
+/**
+ * Xcode Light Theme
+ *
+ * Theme definition placeholder for xcode-light.
+ */
+
 export {};

@@ -38,14 +38,9 @@ import {
   LAUNCH_JSON_FILE
 } from '../constants';
 
-// Run service
-// Runs a launch configuration in the integrated terminal (PTY).
-//
-// Flow mirrors VS Code's "Run Without Debugging":
-//   detect configurations (launch.json → project manifests → active file)
-//     → resolve variables → build PowerShell statements (+ env)
-//       → spawn a dedicated, named terminal (replacing a previous run of the
-//         same configuration) → surface Stop / preview in the Run panel.
+// Run service launches a configuration in the integrated terminal.
+// The flow detects configurations, resolves variables, builds shell statements,
+// spawns a dedicated terminal, and surfaces stop and preview in the Run panel.
 
 function getWorkspaceRoot() {
   return uiStore.getSnapshot().explorerRoot || '';

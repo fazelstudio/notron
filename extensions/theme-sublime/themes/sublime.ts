@@ -1,2 +1,7 @@
-// placeholder for sublime
+/**
+ * Sublime Theme
+ *
+ * Theme definition placeholder for sublime.
+ */
+
 export {};

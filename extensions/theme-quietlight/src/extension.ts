@@ -1,11 +1,14 @@
 import { quietlight, defaultSettingsQuietlight } from '@uiw/codemirror-themes-all';
-import { registerTheme } from '../../../src/lib/theme/registry';
-import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+import { theming, type ExtensionContext } from 'notron-sdk';
 export const id = "quietlight";
 export const label = "Quietlight";
 export const isDark = false;
 export const uiTheme = "light";
 export const extension = quietlight;
 export const settings = defaultSettingsQuietlight;
-registerTheme(id, { extension, settings, isDark, label, uiTheme });
-__registerTheme({ id, label, uiTheme, path: "./themes/quietlight.ts" });
+
+export async function activate(context: ExtensionContext): Promise<void> {
+  context.subscriptions.push(theming.registerTheme({ id, label, uiTheme: uiTheme as any, path: "./themes/quietlight.ts", extension, settings, isDark }));
+}
+
+export async function deactivate(): Promise<void> {}

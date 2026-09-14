@@ -1,9 +1,7 @@
 /**
  * Task Provider Registry
  *
- * Mirrors VS Code's Task Provider contribution. Extensions register a provider
- * that supplies tasks (build, test, etc.) which appear in "Run Task" without
- * hardcoding shell commands in core.
+ * Registry for task providers that supply build and test tasks for the workspace.
  */
 
 export interface TaskDefinition {

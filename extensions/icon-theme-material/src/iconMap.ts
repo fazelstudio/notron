@@ -1,7 +1,7 @@
 /**
- * IconMap
+ * Icon Map
  *
- * Extension module..
+ * Auto-generated mapping from file and folder names to material icons.
  */
 // Auto-generated material icon map
 // Source: editor-material-icon-theme v5.38.1 official manifest (dist/material-icons.json)

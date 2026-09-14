@@ -47,8 +47,10 @@ Dev loop:
 
 Notes:
  install-local is dev convenience only — whether Notron core reads
- ~/.notron/extensions-dev at startup is core's responsibility (currently
- core has no .ntrn loader; gap documented in IMPLEMENTATION_LOG Phase 5).
+ ~/.notron/extensions-dev is core's responsibility. For user installation,
+ use Notron's Command Palette command "Extensions: Install from .ntrn…";
+ the desktop host persists packages in application data and loads bundled
+ CommonJS entries through notron-sdk.
 `.trim());
 }
 

@@ -1,3 +1,9 @@
+<!--
+ * New File Dialog
+ *
+ * Modal for creating a new untitled file.
+-->
+
 <script lang="ts">
   import { eventBus } from '../../utils/eventBus';
   import Modal from '../common/Modal.svelte';
@@ -55,13 +61,13 @@
 
 <Modal {isOpen} title="New File" {onClose} widthClass="max-w-sm">
   {#snippet children()}
-    <div class="p-4 space-y-4" onkeydown={handleKeydown} role="none">
+    <div class="p-2" onkeydown={handleKeydown} role="none">
       <input
         bind:this={inputEl}
         type="text"
         placeholder="File name (e.g. index.tsx)"
         bind:value={fileName}
-        class="w-full px-3 py-2 text-sm rounded outline-none border bg-input border-subtle text-primary placeholder-muted focus:border-focus"
+        class="w-full px-2 h-[var(--nt-control-height)] text-xs rounded-[2px] outline-none border bg-input border-subtle text-primary placeholder-muted focus:border-focus"
       />
     </div>
   {/snippet}
@@ -70,7 +76,7 @@
       <button
         onclick={handleCreate}
         disabled={!fileName.trim()}
-        class="px-4 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent disabled:opacity-50 disabled:hover:bg-accent rounded outline-none"
+        class="nt-control font-medium bg-accent hover:bg-accent-hover text-on-accent disabled:opacity-50 disabled:hover:bg-accent rounded-[2px] outline-none"
       >Create</button>
     </div>
   {/snippet}

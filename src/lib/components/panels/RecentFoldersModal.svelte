@@ -1,3 +1,9 @@
+<!--
+ * Recent Folders Modal
+ *
+ * List of recently opened workspaces for quick switching.
+-->
+
 <script lang="ts">
   import { eventBus } from '../../utils/eventBus';
   import { uiStore } from '../../stores/ui';
@@ -27,17 +33,17 @@
   onClose={() => uiStore.closeRecentFoldersModal()}
   widthClass="max-w-lg"
 >
-  <div class="p-2" style="max-height: 40.5rem;">
+  <div class="p-1" style="max-height: 40.5rem;">
     {#each $ui.recentWorkspaces as path (path)}
-      <button onclick={() => handleOpenRecent(path)} class="flex flex-col items-start w-full text-left opacity-80 hover:opacity-100 transition-opacity p-3 rounded hover:bg-hover h-[4.5rem] justify-center">
-        <span class="font-medium truncate w-full">{path.split(/[/\\]/).pop()}</span>
-        <span class="text-xs opacity-50 truncate w-full">{path}</span>
+      <button onclick={() => handleOpenRecent(path)} class="nt-menu-item flex-col !items-start text-left opacity-80 hover:opacity-100 hover:bg-hover justify-center">
+        <span class="font-medium truncate w-full text-xs">{path.split(/[/\\]/).pop()}</span>
+        <span class="text-[length:var(--nt-chrome-font-sm)] opacity-50 truncate w-full">{path}</span>
       </button>
     {/each}
   </div>
   {#snippet footer()}
-    <button onclick={() => { uiStore.clearRecentWorkspaces(); uiStore.closeRecentFoldersModal(); }} class="flex flex-col items-start w-full text-left opacity-80 hover:opacity-100 transition-opacity p-1 rounded hover:bg-error/10 text-error h-[3.5rem] justify-center">
-      <span class="font-medium truncate w-full text-center">Clear all recent...</span>
+    <button onclick={() => { uiStore.clearRecentWorkspaces(); uiStore.closeRecentFoldersModal(); }} class="nt-menu-item justify-center w-full text-error hover:bg-error/10">
+      <span class="font-medium truncate text-xs">Clear all recent...</span>
     </button>
   {/snippet}
 </Modal>

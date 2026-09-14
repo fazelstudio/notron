@@ -52,6 +52,10 @@ export async function saveWorkspaceSession(): Promise<void> {
               path: t.path,
               name: t.name,
               language: t.language,
+              languageDetected: t.languageDetected,
+              encoding: t.encoding,
+              lineEnding: t.lineEnding,
+              isLargeFile: t.isLargeFile,
               isPreview: t.isPreview,
               isPinned: t.isPinned,
               isModified: t.isModified,
@@ -95,6 +99,10 @@ export async function saveWorkspaceSession(): Promise<void> {
         path: t.path,
         name: t.name,
         language: t.language,
+        languageDetected: t.languageDetected,
+        encoding: t.encoding,
+        lineEnding: t.lineEnding,
+        isLargeFile: t.isLargeFile,
         isPreview: t.isPreview,
         isPinned: t.isPinned,
         cursor: editorStore.getCursor(t.id),
@@ -247,6 +255,11 @@ export function applySessionState(parsed: any, stateMap: Map<string, string>): v
         isModified: hasRealDirty,
         lastAccessed: Date.now(),
         status: hasRealDirty ? 'modified' : 'loaded',
+        // Restored tabs already had their language detected; older sessions missed the flag.
+        languageDetected: t.languageDetected ?? (t.language ? true : false),
+        encoding: t.encoding,
+        lineEnding: t.lineEnding,
+        isLargeFile: t.isLargeFile ?? false,
       };
     });
     editorStore.setTabs(lazyTabs, parsed.activeTabId || null);
@@ -262,7 +275,18 @@ export function applySessionState(parsed: any, stateMap: Map<string, string>): v
           paneId,
           {
             ...p,
-            tabs: (p as any).tabs.map((t: any) => lazyTabs.find((lt) => lt.id === t.id) || t),
+            tabs: (p as any).tabs.map((t: any) => {
+              const match = lazyTabs.find((lt) => lt.id === t.id);
+              if (match) return match;
+              // Fallback for old sessions where pane tabs were not in the main tabs list.
+              return {
+                ...t,
+                languageDetected: t.languageDetected ?? (t.language ? true : false),
+                encoding: t.encoding,
+                lineEnding: t.lineEnding,
+                isLargeFile: t.isLargeFile ?? false,
+              };
+            }),
           },
         ];
       })

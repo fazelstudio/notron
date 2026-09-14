@@ -1,3 +1,9 @@
+<!--
+ * Git Gutter Peek Button
+ *
+ * Tooltip wrapper for git gutter peek toolbar buttons.
+-->
+
 <script lang="ts">
   import Tooltip from './Tooltip.svelte';
   import { onMount } from 'svelte';

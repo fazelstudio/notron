@@ -28,7 +28,6 @@ export interface AppSettings {
   search_include: string[];
   default_svg_view: 'image' | 'code' | 'split';
   default_md_view: 'preview' | 'code' | 'split';
-  discord_presence: boolean;
   default_shell: TerminalType;
   confirm_delete: boolean;
 }
@@ -48,7 +47,6 @@ export const HARDCODED_DEFAULTS: AppSettings = {
   search_include: [],
   default_svg_view: 'image',
   default_md_view: 'preview',
-  discord_presence: true,
   default_shell: 'powershell',
   confirm_delete: true,
 };

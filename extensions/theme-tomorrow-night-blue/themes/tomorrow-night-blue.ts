@@ -1,2 +1,7 @@
-// placeholder for tomorrow-night-blue
+/**
+ * Tomorrow Night Blue Theme
+ *
+ * Theme definition placeholder for tomorrow-night-blue.
+ */
+
 export {};

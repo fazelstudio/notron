@@ -20,13 +20,16 @@ export interface StatusBarContribution {
 
 class StatusBarRegistry {
   private items: StatusBarContribution[] = [];
+  private listeners = new Set<() => void>();
 
   register(item: StatusBarContribution): { dispose: () => void } {
     this.items.push(item);
     this.items.sort((a, b) => b.priority - a.priority);
+    this.notify();
     return {
       dispose: () => {
         this.items = this.items.filter((i) => i !== item);
+        this.notify();
       }
     };
   }
@@ -37,6 +40,19 @@ class StatusBarRegistry {
 
   getByAlignment(alignment: StatusBarAlignment): StatusBarContribution[] {
     return this.items.filter((i) => i.alignment === alignment).sort((a, b) => b.priority - a.priority);
+  }
+
+  onDidChange(listener: () => void): { dispose: () => void } {
+    this.listeners.add(listener);
+    return { dispose: () => this.listeners.delete(listener) };
+  }
+
+  refresh(): void {
+    this.notify();
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
   }
 }
 

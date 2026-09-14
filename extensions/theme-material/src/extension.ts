@@ -1,11 +1,14 @@
 import { material, defaultSettingsMaterial } from '@uiw/codemirror-themes-all';
-import { registerTheme } from '../../../src/lib/theme/registry';
-import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+import { theming, type ExtensionContext } from 'notron-sdk';
 export const id = "material";
 export const label = "Material";
 export const isDark = true;
 export const uiTheme = "dark";
 export const extension = material;
 export const settings = defaultSettingsMaterial;
-registerTheme(id, { extension, settings, isDark, label, uiTheme });
-__registerTheme({ id, label, uiTheme, path: "./themes/material.ts" });
+
+export async function activate(context: ExtensionContext): Promise<void> {
+  context.subscriptions.push(theming.registerTheme({ id, label, uiTheme: uiTheme as any, path: "./themes/material.ts", extension, settings, isDark }));
+}
+
+export async function deactivate(): Promise<void> {}

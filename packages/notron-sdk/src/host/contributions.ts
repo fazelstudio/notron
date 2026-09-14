@@ -14,11 +14,24 @@ import type { MenuLocation } from '../api/menus.js';
 import { __registerSnippetContribution } from '../api/snippets.js';
 import { __registerDebugger } from '../api/debug.js';
 import { __registerTaskDefinition } from '../api/tasks.js';
+import { __registerCommandContribution } from '../api/commands.js';
+import { __registerConfigurationContribution } from '../api/workspace.js';
 
 export function registerManifestContributions(manifest: ExtensionManifest, extensionId: string): Disposable {
  const disposables: Disposable[] = [];
  const contributes = manifest.contributes as unknown as Record<string, unknown> | undefined;
  if (!contributes) return { dispose() {} };
+
+ const commands = contributes.commands as Array<{ command: string; title: string; category?: string; icon?: string; enablement?: string }> | undefined;
+ if (commands) {
+ for (const command of commands) {
+  try {
+   disposables.push(__registerCommandContribution(command, extensionId));
+  } catch (err) {
+   console.warn(`[contributions] command "${command.command}" failed:`, err);
+  }
+ }
+ }
 
  const viewsContainers = contributes.viewsContainers as
  | { activitybar?: Array<{ id: string; title: string; icon: string }>; panel?: Array<{ id: string; title: string; icon: string }> }
@@ -175,8 +188,18 @@ export function registerManifestContributions(manifest: ExtensionManifest, exten
  }
  }
 
- // Configuration is already validated and needs no runtime registry.
- // Host can read manifest.contributes.configuration via validateManifest.
+ const configuration = contributes.configuration as {
+  title: string;
+  category?: string;
+  properties: Record<string, { type: 'string' | 'number' | 'boolean' | 'array' | 'object'; default?: unknown; description?: string; enum?: unknown[] }>;
+ } | undefined;
+ if (configuration) {
+  try {
+   disposables.push(__registerConfigurationContribution(configuration, extensionId));
+  } catch (err) {
+   console.warn(`[contributions] configuration for ${extensionId} failed:`, err);
+  }
+ }
 
  return combinedDisposable(...disposables);
 }

@@ -28,6 +28,8 @@ export interface CoreCommandContext {
   collapseExplorer: () => void;
   // UI toggles (optional, for palette completeness)
   toggleSidebar: () => void;
+  installExtension: () => void | Promise<void>;
+  uninstallExtension: () => void | Promise<void>;
 }
 
 /** Register core commands and return palette items. */
@@ -47,6 +49,20 @@ export function registerCoreCommands(ctx: CoreCommandContext): PaletteItem[] {
       category: 'command',
       shortcut: 'Ctrl+B',
       action: () => ctx.toggleSidebar(),
+    },
+    {
+      id: 'workbench.action.extensions.install',
+      label: 'Extensions: Install from .ntrn…',
+      category: 'command',
+      action: () => ctx.installExtension(),
+      keywords: ['extension', 'install', 'ntrn', 'package'],
+    },
+    {
+      id: 'workbench.action.extensions.uninstall',
+      label: 'Extensions: Uninstall…',
+      category: 'command',
+      action: () => ctx.uninstallExtension(),
+      keywords: ['extension', 'remove', 'uninstall'],
     },
     {
       id: 'workbench.action.openSettings',

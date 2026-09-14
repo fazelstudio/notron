@@ -1,9 +1,7 @@
 /**
  * Built-in Task Providers
  *
- * Each project type contributes its runnable tasks as data, so the Run panel
- * shows build/test/run entries without the run service hardcoding a project
- * layout. Mirrors the editor's Task Provider contribution point.
+ * Task providers contributed by project type for the Run panel.
  */
 
 import { taskRegistry, type TaskDefinition } from '../../workbench/taskRegistry';

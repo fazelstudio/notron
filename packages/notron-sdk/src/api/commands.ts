@@ -15,6 +15,37 @@ interface RegisteredCommand {
   extensionId?: string;
 }
 
+interface CommandContributionDescriptor {
+  command: string;
+  title: string;
+  category?: string;
+  icon?: string;
+  enablement?: string;
+}
+
+export interface CommandContributionDelegate {
+  registerCommandContribution?(contribution: CommandContributionDescriptor, extensionId: string): Disposable;
+}
+
+let contributionDelegate: CommandContributionDelegate | null = null;
+
+export function setCommandContributionDelegate(d: CommandContributionDelegate | null): void {
+  contributionDelegate = d;
+}
+
+export function __registerCommandContribution(
+  contribution: CommandContributionDescriptor,
+  extensionId: string,
+): Disposable {
+  if (!contribution.command || !contribution.title) {
+    throw new TypeError('[commands] contribution requires command and title');
+  }
+  if (contributionDelegate?.registerCommandContribution) {
+    return contributionDelegate.registerCommandContribution(contribution, extensionId);
+  }
+  return toDisposable(() => {});
+}
+
 export interface CommandDelegate {
   executeCommand<T>(id: string, ...args: unknown[]): Promise<T | undefined>;
   getCommands(filterInternal?: boolean): Promise<string[]>;
@@ -29,6 +60,16 @@ export function setCommandDelegate(d: CommandDelegate | null): void {
 
 export function getCommandDelegate(): CommandDelegate | null {
   return delegate;
+}
+
+type CommandMirror = {
+  register: (id: string, handler: CommandHandler) => Disposable;
+};
+
+let commandMirror: CommandMirror | null = null;
+
+export function __setCommandMirror(m: CommandMirror | null): void {
+  commandMirror = m;
 }
 
 const registry = new Map<string, RegisteredCommand>();
@@ -151,8 +192,6 @@ const KNOWN_CORE_COMMANDS = new Set<string>([
   'workbench.action.preview.showCode',
   'workbench.action.preview.showPreview',
   'workbench.action.preview.showSplit',
-  'workbench.action.selectTheme',
-  'workbench.action.selectIconTheme',
   'workbench.action.openRecentWorkspace',
   'window.minimize',
   'window.maximize',
@@ -182,9 +221,17 @@ export function registerCommand(
     throw new Error(`[commands] Command "${id}" already registered by ${existing.extensionId ?? 'unknown'}`);
   }
   registry.set(id, { id, handler, extensionId });
+  // Mirror to host command registry so palette/menus see SDK commands without dual registration.
+  let mirrorDisposable: Disposable | null = null;
+  if (commandMirror) {
+    try {
+      mirrorDisposable = commandMirror.register(id, handler);
+    } catch {}
+  }
   return toDisposable(() => {
     const cur = registry.get(id);
     if (cur && cur.handler === handler) registry.delete(id);
+    try { mirrorDisposable?.dispose(); } catch {}
   });
 }
 

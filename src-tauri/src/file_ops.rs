@@ -1,6 +1,7 @@
-// File Ops
-//
-// Rust module.
+//! File Operations
+//! 
+//! File system operations with encoding detection and chunked loading.
+
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -60,14 +61,13 @@ pub struct FileNode {
     pub is_dir: bool,
     pub has_children: bool,
     pub children: Option<Vec<FileNode>>,
-    /// True when this entry is matched by .gitignore (shown but visually dimmed,
-    /// exactly like VS Code's "ignored" decoration in the Explorer).
+    /// True when this entry is matched by ignore rules (shown but visually dimmed).
     #[serde(default)]
     pub is_ignored: bool,
 }
 
-const LARGE_FILE_THRESHOLD: u64 = 1_048_576; // 1MB
-// Chunked Loading thresholds
+const LARGE_FILE_THRESHOLD: u64 = 1_048_576; // 1 MB threshold for large file handling.
+// Chunked loading thresholds.
 const CHUNK_THRESHOLD_LOW: u64  = 512 * 1024;   // 500KB — load chunked
 const CHUNK_THRESHOLD_HIGH: u64 = 5 * 1024 * 1024; // 5MB — disable syntax highlight
 const INITIAL_CHUNK_SIZE: usize = 100 * 1024;    // 100KB first chunk
@@ -176,7 +176,7 @@ pub async fn read_file_stream(
 ) -> Result<(), String> {
     use tokio::io::AsyncReadExt;
     let mut file = tokio::fs::File::open(&path).await.map_err(|e| e.to_string())?;
-    // 512KB chunks
+    // Read in 512 KB chunks.
     let mut buf = vec![0u8; 512 * 1024]; 
     loop {
         let n = file.read(&mut buf).await.map_err(|e| e.to_string())?;

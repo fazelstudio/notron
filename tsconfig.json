@@ -18,7 +18,9 @@
     "paths": {
       "@codemirror/state": ["./node_modules/@codemirror/state"],
       "@codemirror/view": ["./node_modules/@codemirror/view"],
-      "@codemirror/language": ["./node_modules/@codemirror/language"]
+      "@codemirror/language": ["./node_modules/@codemirror/language"],
+      "notron-sdk": ["./packages/notron-sdk/src/index.ts"],
+      "notron-sdk/*": ["./packages/notron-sdk/src/*"]
     },
     "types": ["svelte"]
   },

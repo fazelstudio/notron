@@ -7,6 +7,7 @@ import type { Disposable } from '../api/types.js';
 import type { OutputChannel } from '../api/types.js';
 import { InMemoryMemento, InMemorySecretStorage, type Memento, type SecretStorage, type MementoPersistence } from './memento.js';
 import { createOutputChannel } from '../api/window.js';
+import type { ExtensionPermission } from '../types/index.js';
 
 export interface ExtensionContextOptions {
  id: string;
@@ -17,6 +18,7 @@ export interface ExtensionContextOptions {
  secrets?: SecretStorage;
  globalPersistence?: MementoPersistence;
  workspacePersistence?: MementoPersistence;
+ permissions?: ExtensionPermission[];
 }
 
 export class ExtensionContext {
@@ -28,6 +30,7 @@ export class ExtensionContext {
  public readonly secrets: SecretStorage;
  public readonly logChannel: OutputChannel;
  public readonly extensionId: string;
+ public readonly permissions: readonly ExtensionPermission[];
 
  constructor(options: string | ExtensionContextOptions) {
  if (typeof options === 'string') {
@@ -38,6 +41,7 @@ export class ExtensionContext {
  this.globalState = new InMemoryMemento();
  this.workspaceState = new InMemoryMemento();
  this.secrets = new InMemorySecretStorage();
+ this.permissions = [];
  this.logChannel = createOutputChannel(`Extension:${options}`);
  return;
  }
@@ -47,6 +51,7 @@ export class ExtensionContext {
  this.globalState = options.globalState ?? new InMemoryMemento({}, options.globalPersistence);
  this.workspaceState = options.workspaceState ?? new InMemoryMemento({}, options.workspacePersistence);
  this.secrets = options.secrets ?? new InMemorySecretStorage();
+ this.permissions = [...(options.permissions ?? [])];
  this.logChannel = createOutputChannel(`Extension:${options.id}`);
  }
 

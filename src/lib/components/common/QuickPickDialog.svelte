@@ -1,15 +1,10 @@
 <script lang="ts">
 /**
- * QuickPickDialog
+ * Quick Pick Dialog
  *
- * UI component..
+ * Renders the quick pick requested through dialogStore as a command-palette
+ * picker available to any command.
  */
-  /**
-   * Quick Pick Dialog
-   *
-   * Renders the quick pick requested through dialogStore (command-palette
-   * style picker available to any command/feature).
-   */
   import { dialogStore, quickPickState, type QuickPickItem } from '../../stores/dialog';
   import { FZF_LIMIT } from '../../constants';
 
@@ -85,14 +80,14 @@
 {#if request}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed inset-0 z-[199] bg-black/15 backdrop-blur-[1px]"
+    class="fixed inset-0 z-[199] bg-black/15"
     role="presentation"
     onclick={cancel}
     onkeydown={(e) => { if (e.key === 'Escape') cancel(); }}
   ></div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed z-[200] top-9 left-1/2 -translate-x-1/2 w-[clamp(360px,38vw,620px)] max-w-[calc(100vw-280px)] rounded-lg border flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150 bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)]"
+    class="fixed z-[200] top-9 left-1/2 -translate-x-1/2 w-[clamp(360px,38vw,620px)] max-w-[calc(100vw-280px)] flex flex-col overflow-hidden nt-dialog-panel"
     style="max-height: min(70vh, 520px); box-shadow: var(--nt-overlay-shadow);"
     role="dialog"
     tabindex="-1"
@@ -104,16 +99,16 @@
         bind:this={inputEl}
         bind:value={query}
         placeholder={request.placeHolder || 'Type to filter'}
-        class="w-full px-3 py-2 text-sm outline-none border-b bg-[var(--nt-overlay-bg)] text-[var(--nt-overlay-fg)] border-[var(--nt-overlay-border)]"
+        class="w-full px-2 h-[var(--nt-control-height)] text-xs outline-none border-b bg-[var(--nt-overlay-bg)] text-[var(--nt-overlay-fg)] border-[var(--nt-overlay-border)]"
         onkeydown={handleKeydown}
       />
       <div class="max-h-[300px] overflow-y-auto py-1">
         {#if filtered.length === 0}
-          <div class="px-3 py-2 text-xs text-muted">No results</div>
+          <div class="px-2 py-1 text-xs text-muted">No results</div>
         {/if}
         {#each filtered as item, index (item.id ?? item.label)}
           <button
-            class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors {index === selectedIndex && !request.canPickMany ? 'bg-selected text-primary' : 'text-secondary hover:bg-hover'}"
+            class="nt-menu-item gap-2 px-2 text-left {index === selectedIndex && !request.canPickMany ? 'bg-selected text-primary' : 'text-secondary hover:bg-hover'}"
             onclick={() => (request!.canPickMany ? togglePicked(item) : dialogStore.resolveQuickPick(item))}
             onmouseenter={() => (selectedIndex = index)}
           >

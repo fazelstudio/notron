@@ -1,2 +1,7 @@
-// placeholder for okaidia
+/**
+ * Okaidia Theme
+ *
+ * Theme definition placeholder for okaidia.
+ */
+
 export {};

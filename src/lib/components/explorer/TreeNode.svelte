@@ -1,9 +1,16 @@
+<!--
+ * Tree Node
+ *
+ * Single row in the file explorer tree with git status and drag handling.
+-->
+
 <script lang="ts">
   import type { FlatTreeNode } from '../../utils/treeFlattener';
   import { ChevronRight, ChevronDown, Loader2, Dot } from 'lucide-svelte';
   import { gitDecorationStore } from '../../stores/gitDecoration';
   import FileIcon from '../common/FileIcon.svelte';
   import { getGitStatusStyle, getGitBadgeStyle, getIgnoredStyle } from '../../utils/gitStatusStyles';
+  import { TREE_INDENT_PX, TREE_ROW_HEIGHT_PX } from '../../constants';
 
   let { 
     node, 
@@ -40,7 +47,7 @@
   }>();
 
 
-  const indentStyle = $derived(`padding-left: ${node.depth * 12 + 8}px; padding-right: 8px; height: 26px;`);
+  const indentStyle = $derived(`padding-left: ${node.depth * TREE_INDENT_PX + 8}px; padding-right: 8px; height: ${TREE_ROW_HEIGHT_PX}px;`);
   
   const gitDecoration = $derived($gitDecorationStore[node.path]);
 
@@ -88,7 +95,7 @@
   tabindex="0"
   aria-selected={isActive}
   data-node-path={node.path}
-  class="relative flex items-center gap-1.5 cursor-pointer select-none w-full border text-xs transition-colors
+  class="relative flex items-center gap-1.5 select-none w-full border text-xs
     {isActive ? 'bg-selected ring-1 ring-inset ring-accent text-primary' : (isSelected ? 'bg-selected/60 border-transparent text-primary' : 'border-transparent hover:bg-hover hover:text-primary')}
     {isDropTarget ? 'ring-2 ring-inset ring-accent/70 bg-accent/[0.08] drop-valid' : ''}
     {isDropInvalid ? 'drop-invalid' : ''}
@@ -114,12 +121,12 @@
     {@const isDescendant = activeFolderPath ? (node.path === activeFolderPath || node.path.startsWith(activeFolderPath + '\\') || node.path.startsWith(activeFolderPath + '/')) : false}
     {#each Array(node.depth).fill(0) as _, i}
       {@const isLineActive = isDescendant && i === activeFolderDepth}
-      <div class="absolute -top-px -bottom-px border-l pointer-events-none transition-all duration-300 {isLineActive ? 'border-strong opacity-100 z-10' : 'border-subtle opacity-0 group-hover/tree:opacity-40'}" style="left: {14.5 + i * 12}px;"></div>
+      <div class="absolute -top-px -bottom-px border-l pointer-events-none {isLineActive ? 'border-strong opacity-100 z-10' : 'border-subtle opacity-0 group-hover/tree:opacity-40'}" style="left: {14.5 + i * TREE_INDENT_PX}px;"></div>
     {/each}
   {/if}
   {#if node.is_dir && node.isExpanded}
     {@const isLineActive = node.path === activeFolderPath}
-    <div class="absolute -bottom-px border-l pointer-events-none transition-all duration-300 {isLineActive ? 'border-strong opacity-100 z-10' : 'border-subtle opacity-0 group-hover/tree:opacity-40'}" style="top: 13px; left: {14.5 + node.depth * 12}px;"></div>
+    <div class="absolute -bottom-px border-l pointer-events-none {isLineActive ? 'border-strong opacity-100 z-10' : 'border-subtle opacity-0 group-hover/tree:opacity-40'}" style="top: {TREE_ROW_HEIGHT_PX / 2}px; left: {14.5 + node.depth * TREE_INDENT_PX}px;"></div>
   {/if}
 
   <span class="shrink-0 w-3.5 flex items-center justify-center text-muted">

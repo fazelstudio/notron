@@ -1,2 +1,7 @@
-// placeholder for monokai-dimmed
+/**
+ * Monokai Dimmed Theme
+ *
+ * Theme definition placeholder for monokai-dimmed.
+ */
+
 export {};

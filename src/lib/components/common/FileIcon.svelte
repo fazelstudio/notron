@@ -1,16 +1,9 @@
 <script lang="ts">
 /**
- * FileIcon
+ * File Icon
  *
- * UI component..
+ * Renders a file or folder icon for the active icon theme.
  */
-  /**
-   * File Icon
-   *
-   * Renders a file or folder icon for the active icon theme. The theme is
-   * chosen from settings and the matching renderer is picked here, so callers
-   * never branch on theme ids and a new theme is one branch in this file.
-   */
   import { Folder, FolderOpen } from 'lucide-svelte';
   import { getFileIcon } from '../../icon-theme/default';
   import { settingsStore } from '../../stores/settings.svelte';
@@ -35,14 +28,15 @@
   let iconTheme = $derived(settingsStore.effectiveSettings.icon_theme);
   let provider = $derived(getIconProvider(iconTheme) ?? getIconProvider('default'));
   let isOff = $derived(iconTheme === 'off' || !provider);
-  let isMaterial = $derived((provider as any)?.isMaterial === true);
-  let materialSvg = $derived(isMaterial ? ((provider as any).getFileIconSvg?.(name, size) ?? '') : '');
-  let materialFolderSvg = $derived(isMaterial ? ((provider as any).getFolderIconSvg?.(name, size, !!isOpen) ?? '') : '');
+  // Capability, not name: any provider that can render SVG is treated as SVG theme.
+  let hasSvgIcons = $derived(typeof (provider as any)?.getFileIconSvg === 'function');
+  let materialSvg = $derived(hasSvgIcons ? ((provider as any).getFileIconSvg?.(name, size) ?? '') : '');
+  let materialFolderSvg = $derived(hasSvgIcons ? ((provider as any).getFolderIconSvg?.(name, size, !!isOpen) ?? '') : '');
 </script>
 
 {#if !isOff}
   {#if isDir}
-    {#if isMaterial}
+    {#if hasSvgIcons}
       <span class="shrink-0 inline-flex items-center justify-center" style="width:{size}px;height:{size}px" aria-hidden="true">{@html materialFolderSvg}</span>
     {:else}
       {#if isOpen}
@@ -51,7 +45,7 @@
         <Folder {size} class={iconClass} {style} />
       {/if}
     {/if}
-  {:else if isMaterial}
+  {:else if hasSvgIcons}
     <span class="shrink-0 inline-flex items-center justify-center" style="width:{size}px;height:{size}px" aria-hidden="true">{@html materialSvg}</span>
   {:else}
     {@const Icon = getFileIcon(name)}

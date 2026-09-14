@@ -1,6 +1,7 @@
-// Stream
-//
-// Rust module.
+//! Stream
+//! 
+//! Unified streaming IPC batch format.
+
 use serde::Serialize;
 use std::collections::HashMap;
 

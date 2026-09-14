@@ -1,26 +1,6 @@
-// ── Global Search & Safe Replace All ─────────────────────────────────────────
-//
-// Search is backed by the `grep` crate facade (the same library ripgrep is built
-// on) instead of a hand-rolled scan. Results stream over a `tauri::ipc::Channel`
-// in the `StreamedBatch<T>` shape so the frontend can render batches as
-// they arrive and never block on a full-workspace scan.
-//
-// Replace All follows a safe protocol:
-//   * preview first (the frontend shows every file/match, with per-file exclude),
-//   * re-scan each file at commit time with the SAME regex (offsets from the
-//     earlier search are never trusted — the file may have changed),
-//   * open tabs are replaced through CodeMirror on the frontend, closed files
-//     are rewritten here via write-to-temp + atomic rename,
-//   * encoding and line endings of the original file are preserved.
-//
-// For an overview of the grep-searcher API used here:
-//   - SearcherBuilder::line_terminator / before_context / after_context /
-//     binary_detection / line_number
-//   - Sink::{matched, context, context_break, binary_data, finish}
-//   - SinkMatch::{bytes, lines, line_number}
-//   - SinkContext::{bytes, line_number}
-//   - Matcher::find_iter (used to recover byte offsets of each match inside a
-//     matched line, since a line can contain several non-overlapping matches)
+//! Search
+//!
+//! Global search and safe replace-all backed by the grep crate.
 
 use std::collections::HashMap;
 use std::io::{self, Write};
@@ -127,7 +107,7 @@ fn build_matcher(opts: &SearchOptions) -> Result<RegexMatcher, String> {
 const MAX_MATCHES_PER_FILE: usize = 2000;
 
 /// Collects matches (and optional context lines) for a single file. Context
-/// handling mirrors ripgrep's printer semantics:
+/// handling works as follows:
 ///   * `context()` fires once per context line; lines arriving before the next
 ///     match are buffered as "before" context and flushed ahead of the match,
 ///   * lines arriving right after a match are "after" context and appended

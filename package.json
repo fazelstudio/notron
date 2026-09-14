@@ -5,13 +5,13 @@
   "type": "module",
   "license": "MIT",
   "author": "Fazelllyyy (Zulfazli) <zulfazlilsm@gmail.com>",
-  "homepage": "https://github.com/fazelllyyy/notron#readme",
+  "homepage": "https://github.com/fazelstudio/notron#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fazelllyyy/notron.git"
+    "url": "git+https://github.com/fazelstudio/notron.git"
   },
   "bugs": {
-    "url": "https://github.com/fazelllyyy/notron/issues"
+    "url": "https://github.com/fazelstudio/notron/issues"
   },
   "keywords": [
     "editor",

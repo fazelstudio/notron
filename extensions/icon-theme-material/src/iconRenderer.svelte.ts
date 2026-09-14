@@ -1,7 +1,7 @@
 /**
- * IconRenderer.Svelte
+ * Icon Renderer
  *
- * Extension module..
+ * Synchronous material icon rendering with theme-aware variants.
  */
 import {
   getMaterialIcon,
@@ -11,7 +11,7 @@ import {
   ROOT_FOLDER_ICON,
 } from './iconMap';
 import { MATERIAL_ICON_SVGS } from './iconAssets';
-import { themeStore } from '../../../src/lib/stores/theme';
+import { theming } from 'notron-sdk';
 
 /**
  * Synchronous material icon rendering.
@@ -35,13 +35,20 @@ import { themeStore } from '../../../src/lib/stores/theme';
 export const materialIconState = $state({ version: 0, isLight: false });
 
 if (typeof window !== 'undefined') {
-  themeStore.subscribe(({ isDark }) => {
-    const isLight = !isDark;
-    if (materialIconState.isLight !== isLight) {
-      materialIconState.isLight = isLight;
-      materialIconState.version++;
-    }
-  });
+  const syncFromTheme = () => {
+    try {
+      const t = theming.getActiveColorTheme();
+      const isLight = t.kind !== 'dark';
+      if (materialIconState.isLight !== isLight) {
+        materialIconState.isLight = isLight;
+        materialIconState.version++;
+      }
+    } catch {}
+  };
+  syncFromTheme();
+  try {
+    theming.onDidChangeActiveColorTheme(() => syncFromTheme());
+  } catch {}
 }
 
 /** Actual svg base name for an icon name, honoring the light theme variant. */

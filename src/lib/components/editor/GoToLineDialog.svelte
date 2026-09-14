@@ -1,3 +1,9 @@
+<!--
+ * Go To Line Dialog
+ *
+ * Modal for navigating to a specific line number in the active editor.
+-->
+
 <script lang="ts">
   import Modal from '../common/Modal.svelte';
 
@@ -24,12 +30,12 @@
 
 <Modal {isOpen} title="Go to Line" {onClose} widthClass="max-w-xs">
   {#snippet children()}
-    <div class="p-4 space-y-3">
+    <div class="p-2">
       <input
         bind:this={inputEl}
         type="number"
         min="1"
-        class="w-full px-3 py-2 text-sm rounded outline-none border bg-input border-subtle text-primary placeholder-muted focus:border-focus"
+        class="w-full px-2 h-[var(--nt-control-height)] text-xs rounded-[2px] outline-none border bg-input border-subtle text-primary placeholder-muted focus:border-focus"
         placeholder="Enter line number..."
         bind:value={lineStr}
         onkeydown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
@@ -41,7 +47,7 @@
       <button
         onclick={handleSubmit}
         disabled={!lineStr.trim()}
-        class="px-4 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent disabled:opacity-50 rounded outline-none"
+        class="nt-control font-medium bg-accent hover:bg-accent-hover text-on-accent disabled:opacity-50 outline-none"
       >Go</button>
     </div>
   {/snippet}

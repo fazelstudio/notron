@@ -9,6 +9,10 @@
 export interface SidebarView {
   /** Unique view ID (e.g. explorer, search, git, run) */
   id: string;
+  /** Optional SDK view id rendered by the generic extension view host. */
+  extensionViewId?: string;
+  /** Owning SDK view container, when contributed by an extension. */
+  extensionContainerId?: string;
   /** Human-readable title shown in sidebar header */
   title: string;
   /** Lazy loader for the Svelte component */

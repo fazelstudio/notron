@@ -1,3 +1,9 @@
+<!--
+ * Welcome Tab
+ *
+ * Onboarding view with walkthrough steps and quick actions.
+-->
+
 <script lang="ts">
   import { uiStore } from '../../stores/ui';
   import { eventBus } from '../../utils/eventBus';

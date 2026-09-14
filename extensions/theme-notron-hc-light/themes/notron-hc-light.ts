@@ -1,2 +1,7 @@
-// placeholder for notron-hc-light
+/**
+ * Notron Hc Light Theme
+ *
+ * Theme definition placeholder for notron-hc-light.
+ */
+
 export {};

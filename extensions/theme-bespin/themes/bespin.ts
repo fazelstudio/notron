@@ -1,2 +1,7 @@
-// placeholder for bespin
+/**
+ * Bespin Theme
+ *
+ * Theme definition placeholder for bespin.
+ */
+
 export {};

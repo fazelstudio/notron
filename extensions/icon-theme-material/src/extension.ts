@@ -1,22 +1,29 @@
 /**
  * Icon Theme Material Extension
  *
- * Registers material icon theme via SDK and registry.
+ * Registers material icon theme via SDK only.
  */
 
-import { registerIconTheme } from '../../../src/lib/icon-theme/registry';
-import { __registerIconTheme } from '../../../packages/notron-sdk/src/api/theming';
+import { theming, type ExtensionContext } from 'notron-sdk';
 import { getMaterialIcon } from './iconMap';
 import { materialFileIconSvg, materialFolderIconSvg } from './iconRenderer.svelte';
 
 const id = 'material';
 const label = 'Material';
 
-registerIconTheme({ id, label }, {
-  getFileIcon: (name: string) => getMaterialIcon(name),
-  getFileIconSvg: (name: string, size: number) => materialFileIconSvg(name, size),
-  getFolderIconSvg: (name: string, size: number, isOpen: boolean) => materialFolderIconSvg(name, size, isOpen),
-  isMaterial: true,
-} as any);
+export async function activate(context: ExtensionContext): Promise<void> {
+  context.subscriptions.push(
+    theming.registerIconTheme(
+      { id, label, path: './themes/material.json' },
+      {
+        getFileIcon: (name: string) => getMaterialIcon(name),
+        getFileIconSvg: (name: string, size: number) => materialFileIconSvg(name, size),
+        getFolderIconSvg: (name: string, size: number, isOpen: boolean) =>
+          materialFolderIconSvg(name, size, isOpen),
+        isMaterial: true,
+      } as any,
+    ),
+  );
+}
 
-__registerIconTheme({ id, label, path: './themes/material.json' });
+export async function deactivate(): Promise<void> {}

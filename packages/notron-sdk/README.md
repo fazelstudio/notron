@@ -19,6 +19,17 @@ import { ExtensionContext } from 'notron-sdk';
 
 Host runtime (`ExtensionHost`, `ExtensionContext`, `NotronEventBus`, `Memento`, `SecretStorage`) dijembatani ke core Notron via delegate (`setCommandDelegate` → `commandRegistry.execute`, `setWindowDelegate` → `statusBarRegistry`/`dialogService`, `setWorkspaceDelegate` → `fileService`/`settingsStore`). Di luar Notron (test / dev) SDK berjalan standalone dengan fallback in-memory yang tetap memenuhi kontrak tipe.
 
+`ExtensionHost` menghormati `activationEvents`: `activateAll()` hanya memproses
+ekstensi startup (`*` dan `onStartupFinished`), sedangkan host dapat memanggil
+`activateByEvent('onCommand:contoh.command')` untuk aktivasi tertunda.
+Kontribusi deklaratif didaftarkan sebelum aktivasi sehingga UI dapat
+mengagregasikan manifest tanpa mengimpor kode ekstensi secara langsung.
+
+API `discord` adalah capability host yang opsional untuk ekstensi presence atau
+integrasi aktivitas lain. Di luar host desktop API ini aman digunakan karena
+fallback-nya mengembalikan `{ connected: false }` dan operasi aktivitas menjadi
+no-op.
+
 Pemisahan `src/lib/workbench/*Registry` (activityBar, sidebar, bottomPanel, statusBar, menu, preview, scm, task, snippet, settings) membuat kontainer view/panel/menu bersifat registry-driven — ekstensi cukup deklarasi di `manifest.json`, tidak menyentuh shell.
 
 ---
@@ -89,9 +100,8 @@ npx notron-sdk package
 # 7) install lokal (dev only — lihat catatan)
 npx notron-sdk install-local my-extension-0.1.0.ntrn
 # → ~/.notron/extensions-dev/acme.my-extension/
-# Catatan: Notron core saat ini BELUM memiliki loader .ntrn otomatis (gap prioritas tinggi,
-#          lihat IMPLEMENTATION_LOG Fase 5 & Status di bawah). install-local hanya
-#          extract untuk inspeksi manual/testing lokal.
+# Catatan: install-local hanya untuk inspeksi/testing lokal. Untuk memasang paket
+# sebagai pengguna, gunakan Command Palette → Extensions: Install from .ntrn…
 
 # 8) lihat template lain
 npx notron-sdk list-templates
@@ -150,13 +160,14 @@ import { commands, window, workspace, views, menus, languages, theming, debug, t
 | `workspace` §3.1 folders | **Stabil** | `workspaceFolders: WorkspaceFolder[]\|undefined`, `onDidChangeWorkspaceFolders` | Bridge `eventBus 'request-workspace-switch'` → `__setWorkspaceFolders` |
 | `workspace` §3.2 dokumen | **Stabil** | `onDidOpenTextDocument`/`onDidCloseTextDocument`/`onDidSaveTextDocument`/`onDidChangeTextDocument: Event<TextDocument>` | Via `Emitter` + helper `__fireDidOpen/Close/Save/Change`; host bridge `eventBus 'request-open-file'`/`split:request-close-tab`/`editor:action` + CodeMirror `updateListener` → `editor:sync-content` |
 | `workspace` §3.3 fs | **Stabil** | `fs.readFile/writeFile/readDirectory/createDirectory/delete/rename/stat(uri): Promise<...>` | Dual: delegate ke `fileService`/`fileIpc` (`invoke('read_file_text', ...)`) bila ada, else fallback in-memory tree `Map` (CRUD penuh + `onFileSystemChange` dari mutasi / Tauri `fs-change` `watcher_service.rs:346`) |
-| `workspace` §3.4 config | **Stabil** | `getConfiguration(section?): WorkspaceConfiguration { get/has/update }`, `onDidChangeConfiguration: Event<ConfigurationChangeEvent>` | Fallback `configStore` Map + defaults mirror `HARDCODED_DEFAULTS`; delegate ke `settingsStore`/`settingsIpc` (`db.rs:577`) bila ada; `affectsConfiguration` diimplementasi |
+| `workspace` §3.4 config | **Stabil** | `getConfiguration(section?): WorkspaceConfiguration { get/has/update }`, `registerConfiguration(...)`, `onDidChangeConfiguration: Event<ConfigurationChangeEvent>` | Runtime schema contributions are delegated to the host settings registry; values still use the normal global/workspace configuration path |
 | `workspace` §3.5 fs provider | **Stub** | `registerFileSystemProvider(scheme, provider): Disposable` | Prioritas rendah (§3.5), `throw NotImplementedError` — core hanya `TauriFileService` lokal |
 | `views` §5 | **Stabil** | `getContainer(id)/getContainers()/getView(id)/getViews(containerId?)`, `registerTreeDataProvider<T>(viewId, provider)`, `registerWebviewViewProvider(viewId, provider)`, `onDidChangeViews` | In-memory `containers/viewsMap/treeProviders/webviewProviders` + delegate ke `activityBarRegistry`/`sidebarRegistry`; declarative `contributes.viewsContainers/views` via host `contributions.ts` |
 | `menus` §6 | **Stabil** | `evaluateWhenClause(expr, ctx): boolean`, `getMenus(location, ctx): MenuEntry[]` + 13 `MenuLocation` | Parser lengkap (tokenizer + recursive-descent: `&&`/`||`/`!`/`==`/`!=`/`=~`/`>`/`<`/`in` + `()` + quoted/unquoted `.js` literal + regex `/.../flags`); declarative `contributes.menus` via host |
 | `languages` §4 (completion/hover/definition/formatting) | **Stub prioritas tinggi** | `registerCompletionItemProvider(selector, provider, ...triggerChars)`, `registerHoverProvider`, `registerDefinitionProvider`, `registerDocumentFormattingEditProvider` | Highlighting per bahasa **sudah modular** (80+ bahasa `languageDetector.ts:LANG_LOADERS` + `languageRegistry` per-bahasa + `Editor.svelte:langCompartment` lazy) — gap hanya provider dinamis runtime (butuh `editorExtensionRegistry`/`Compartment` bridge ke CodeMirror; SDK simpan in-memory + `warnStubOnce`, host belum wiring) |
 | `languages` diagnostics/config | **Stabil** | `createDiagnosticCollection(name?): DiagnosticCollection { set/get/has/delete/clear/forEach/dispose }`, `setLanguageConfiguration(languageId, config)`, `matchesSelector` | CRUD penuh in-memory (`DiagnosticCollectionImpl` + `Emitter`); declarative `languages`/`grammars` via host |
-| `theming` §7 | **Stabil** | `getActiveColorTheme(): ColorTheme {kind:'light'|'dark', id}`, `onDidChangeActiveColorTheme: Event<ColorTheme>` | Fallback `activeTheme: vscode-dark` + `themeEmitter`; declarative `contributes.themes/iconThemes/productIconThemes` via host (`THEMES` 51 tema `themes/index.ts:159` belum dynamic import `path`) |
+| `theming` §7 | **Stabil** | `getActiveColorTheme(): ColorTheme {kind:'light'|'dark', id}`, `onDidChangeActiveColorTheme`, `getContributedThemes()`, `getContributedIconThemes()` | Fallback `activeTheme` + `themeEmitter`; declarative `contributes.themes/iconThemes/productIconThemes` via host |
+| `activity` | **Optional** | `init()`, `setActivity(...)`, `clear()` | Generic host capability; legacy `discord` namespace aliases this API |
 | `debug` §8 | **Stub (prioritas rendah)** | `registerDebugAdapterDescriptorFactory(debugType, factory)`, `startDebugging(folder, config): Promise<boolean>`, `onDidStart/TerminateDebugSession` | Declarative `contributes.debuggers` data-only real; `startDebugging` `throw NotImplementedError` — core belum punya DAP host (hanya `runService`/`runProviderRegistry` run tanpa debug; `grep DAP` 0 hit) |
 | `tasks` §9 | **Stabil (sebagian)** | `registerTaskProvider(type, provider)`, `executeTask(task): Promise<TaskExecution>`, `fetchTasks(filter?)`, `onDidStart/EndTask`, `ShellExecution/ProcessExecution/CustomExecution` | Delegate ke `taskRegistry.register` (`npm`/`cargo` `contrib/debug/taskProviders.ts`) bila ada, else fallback in-memory; `executeTask` fallback emit `onDidStartTask` → `queueMicrotask` → `onDidEndTask` tanpa shell nyata (hybrid) |
 | `scm` §10 | **Stabil (sebagian)** | `createSourceControl(id,label,rootUri?): SourceControl { createResourceGroup/ inputBox/count}`, `getSourceControls()`, `onDidChangeSelectedSourceControl` | Delegate ke `scmRegistry.register` generic (`git` provider `SourceControlPanel`) bila ada, else fallback `SourceControlImpl` CRUD penuh (groups + `resourceStates` setter + `inputBox`); core `scmRegistry` sudah generic |
@@ -231,9 +242,15 @@ Validasi `manifest.json` terhadap skema (`validateManifest` Fase 1 + §5.1 `mani
 
 ### `notron-sdk install-local <path.ntrn>`
 
-Ekstrak `.ntrn` ke `~/.notron/extensions-dev/<extensionId>/` (dev convenience, `extractAllTo` + clear dest).
+Ekstrak `.ntrn` ke `~/.notron/extensions-dev/<extensionId>/` (dev convenience).
+Untuk instalasi pengguna, gunakan Command Palette Notron: `Extensions: Install from
+.ntrn…`. Core memvalidasi manifest, menolak path traversal ZIP, menyimpan paket di
+application data, menemukan kembali paket saat startup/workspace switch, dan
+mengaktifkan entry CommonJS hasil bundle melalui `notron-sdk`.
 
-> **Catatan**: `install-local` hanya untuk development/testing lokal. Apakah Notron core benar-benar membaca folder ini saat startup adalah tanggung jawab core. Saat eksplorasi Fase 5, Notron **belum** punya loader `.ntrn` atau watcher untuk `extensions-dev` (gap prioritas tinggi, `grep ntrn` 0 hit di `src`/`src-tauri`). Perintah mencetak note dev-only jelas.
+Runtime desktop hanya menyediakan `notron-sdk` kepada entry point terpasang. Native
+Node modules, arbitrary `require`, dan ESM imports yang perlu resolver eksternal
+belum didukung karena the webview bundle is produced by Vite.
 
 ### `notron-sdk list-templates`
 

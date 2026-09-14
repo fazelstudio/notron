@@ -64,7 +64,38 @@ Notron is modular by design. See `ARCHITECTURE.md` for the full layering.
 - Shared pure logic lives in `utils/`, **not** in a component's `<script module>` (e.g. git status styles were consolidated into `utils/`). Helpers must have exactly one source of truth.
 - IPC: use the typed catalog in `src/lib/platform/ipc.ts` or `src/lib/services/fileService.ts` instead of raw `invoke('snake_case_command', {...})`. The matching Rust handler lives in `src-tauri/src/`. When changing an IPC command, update the catalog and both sides.
 - Settings are scoped: `HARDCODED_DEFAULTS ← user (global) ← workspace` (see `stores/settings.svelte.ts`). Workspace overrides are surfaced in the Settings page with a "Workspace" badge and a reset-to-global action.
-- Comments are English, concise, and focused on *why*. Every file uses the same header format `/** * Title * * Description. */` and inline `//` for why-comments. Keep the same style on every line, not only the first. No disclosure of additional references in comments.
+- Comments are English, concise, and focused on *why* (not *what*). Keep one style per purpose and never mix block/doc with inline on the same block.
+  - **File header (first block in file):** one title + one-sentence description.
+    - TypeScript / JS: `/**` block at the very top:
+      ```ts
+      /**
+       * Title
+       *
+       * One-sentence description of the file's responsibility.
+       */
+      ```
+    - Svelte markup: `<!-- -->` block at the very top because content outside
+      `<script>` is parsed as markup:
+      ```svelte
+      <!--
+       * Title
+       *
+       * One-sentence description of the file's responsibility.
+      -->
+      ```
+    - Rust: `//!` inner-doc block at the very top (Rust equivalent of the `/**` header):
+      ```rs
+      //! Title
+      //!
+      //! One-sentence description of the module's responsibility.
+      ```
+  - **Exported API docs:** directly above the exported symbol, not at file top.
+    - TS/Svelte: `/** Description. */`
+    - Rust: `/// Description.` (or `//!` for module docs, `///` for item docs)
+  - **Why-comments (inside bodies):** `//` only, one `//` per line even for multi-line explanations. Start with capital letter, end with period. No `/* ... */` or `/** ... */` inside bodies. Describe behavior in plain English for open-source readers; do not reference external products, editors, or internal spec codes.
+  - **Section separators:** `// ── Section Name ──` (Rust) or `// Section Name` (TS) using `//` only. Use descriptive names, not codes.
+  - **External references:** never mention external editors, products, or spec identifiers (`VS Code`, `VSCode`, `point`, `section #`, `D.2`, `B.5`, `#123`, etc.) in comments. Explain the *behavior* and *reason* directly so the comment is self-contained.
+  - **Spacing:** one blank line after a file header and before a section separator; no extra `/**` and `//` stacked without code between them. No disclosure of additional references in comments.
 
 ## Guardrails
 

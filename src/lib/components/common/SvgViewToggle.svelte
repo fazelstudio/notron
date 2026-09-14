@@ -1,3 +1,9 @@
+<!--
+ * SVG View Toggle
+ *
+ * Toggle control for SVG preview and code modes.
+-->
+
 <script lang="ts">
   import DropdownMenu, { type DropdownMenuItem } from './DropdownMenu.svelte';
   import { editorStore } from '../../stores/editor';
@@ -51,9 +57,9 @@
 <div>
   <DropdownMenu items={svgMenuItems} align="right">
     {#snippet trigger()}
-      <button class="flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-md transition-colors text-icon-default hover:text-icon-active hover:bg-hover">
+      <button class="nt-control flex items-center gap-1.5 text-icon-default hover:text-icon-active hover:bg-hover text-icon-default hover:text-icon-active hover:bg-hover">
         {currentSvgViewLabel}
-        <ChevronDown size={14} class="opacity-50" />
+        <ChevronDown size={12} class="opacity-50" />
       </button>
     {/snippet}
   </DropdownMenu>

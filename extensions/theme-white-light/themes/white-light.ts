@@ -1,2 +1,7 @@
-// placeholder for white-light
+/**
+ * White Light Theme
+ *
+ * Theme definition placeholder for white-light.
+ */
+
 export {};

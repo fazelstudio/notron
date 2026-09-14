@@ -1,11 +1,14 @@
 import { gruvboxDark, defaultSettingsGruvboxDark } from '@uiw/codemirror-themes-all';
-import { registerTheme } from '../../../src/lib/theme/registry';
-import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+import { theming, type ExtensionContext } from 'notron-sdk';
 export const id = "gruvbox-dark";
 export const label = "Gruvbox Dark";
 export const isDark = true;
 export const uiTheme = "dark";
 export const extension = gruvboxDark;
 export const settings = defaultSettingsGruvboxDark;
-registerTheme(id, { extension, settings, isDark, label, uiTheme });
-__registerTheme({ id, label, uiTheme, path: "./themes/gruvbox-dark.ts" });
+
+export async function activate(context: ExtensionContext): Promise<void> {
+  context.subscriptions.push(theming.registerTheme({ id, label, uiTheme: uiTheme as any, path: "./themes/gruvbox-dark.ts", extension, settings, isDark }));
+}
+
+export async function deactivate(): Promise<void> {}

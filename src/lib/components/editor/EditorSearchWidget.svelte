@@ -1,11 +1,15 @@
+<!--
+ * Editor Search Widget
+ *
+ * Find and replace overlay for the active editor instance.
+-->
+
 <script lang="ts">
   import { X, ChevronUp, ChevronDown, Replace, ReplaceAll, CaseSensitive, WholeWord, Regex } from 'lucide-svelte';
   import { uiStore } from '../../stores/ui';
   import { untrack } from 'svelte';
   import { SearchQuery } from '@codemirror/search';
   import type { EditorView } from '@codemirror/view';
-  import { fly } from 'svelte/transition';
-  import { cubicOut } from 'svelte/easing';
   import Tooltip from '../common/Tooltip.svelte';
   import { buildReplaceRegex, applyReplacement } from '../../utils/replace';
 
@@ -210,20 +214,19 @@
 </script>
 
 <div 
-  transition:fly={{ y: -20, duration: 250, easing: cubicOut }}
-  class="absolute top-3 z-50 bg-surface border border-subtle rounded shadow-elevated flex flex-col w-[480px] text-sm text-primary overflow-hidden"
+  class="absolute top-2 z-50 bg-surface border border-subtle rounded-[var(--nt-overlay-radius)] shadow-elevated flex flex-col w-[360px] text-xs text-primary overflow-hidden"
   style="right: {Math.max(32, rightGap + 32)}px;"
 >
-  <div class="flex items-center p-1.5 gap-1.5">
+  <div class="flex items-center p-1 gap-1">
     <Tooltip content="Toggle Replace">
-      <button aria-label="Toggle Replace" class="p-1 hover:bg-hover rounded text-muted transition-colors focus:outline-none" onclick={() => isReplaceVisible = !isReplaceVisible}>
-        <ChevronDown size={14} class="transition-transform {isReplaceVisible ? '' : '-rotate-90'}" />
+      <button aria-label="Toggle Replace" class="p-1 hover:bg-hover rounded text-muted" onclick={() => isReplaceVisible = !isReplaceVisible}>
+        <ChevronDown size={12} class={isReplaceVisible ? '' : '-rotate-90'} />
       </button>
     </Tooltip>
-    <div class="flex items-center bg-canvas border border-subtle rounded px-2 py-0.5 flex-1 focus-within:border-focus focus-within:ring-1 focus-within:ring-focus transition-all">
-      <input bind:this={inputEl} type="text" bind:value={query} onkeydown={handleKeydown} placeholder="Find" class="bg-transparent border-none outline-none w-full text-[13px] placeholder-muted" />
+    <div class="flex items-center bg-canvas border border-subtle rounded-[2px] px-2 py-0.5 flex-1 focus-within:border-focus">
+      <input bind:this={inputEl} type="text" bind:value={query} onkeydown={handleKeydown} placeholder="Find" class="bg-transparent border-none outline-none w-full text-xs placeholder-muted" />
     </div>
-    <div class="text-[11px] text-muted whitespace-nowrap min-w-[50px] text-center shrink-0">
+    <div class="text-[length:var(--nt-chrome-font-sm)] text-muted whitespace-nowrap min-w-[50px] text-center shrink-0">
       {#if matches.length > 0}
         {currentMatchIndex + 1} of {matches.length}
       {:else if query.length > 0}
@@ -232,35 +235,35 @@
     </div>
     <div class="flex items-center border-l border-subtle pl-1 gap-0.5 shrink-0">
       <Tooltip content="Match Case">
-        <button aria-label="Match Case" class="p-1 hover:bg-hover rounded text-icon-default transition-colors focus:outline-none {caseSensitive ? 'text-accent' : ''}" onclick={() => caseSensitive = !caseSensitive}>
-          <CaseSensitive size={13} />
+        <button aria-label="Match Case" class="p-1 hover:bg-hover rounded text-icon-default {caseSensitive ? 'text-accent' : ''}" onclick={() => caseSensitive = !caseSensitive}>
+          <CaseSensitive size={12} />
         </button>
       </Tooltip>
       <Tooltip content="Match Whole Word">
-        <button aria-label="Match Whole Word" class="p-1 hover:bg-hover rounded text-icon-default transition-colors focus:outline-none {wholeWord ? 'text-accent' : ''}" onclick={() => wholeWord = !wholeWord}>
-          <WholeWord size={13} />
+        <button aria-label="Match Whole Word" class="p-1 hover:bg-hover rounded text-icon-default {wholeWord ? 'text-accent' : ''}" onclick={() => wholeWord = !wholeWord}>
+          <WholeWord size={12} />
         </button>
       </Tooltip>
       <Tooltip content="Use Regular Expression">
-        <button aria-label="Use Regular Expression" class="p-1 hover:bg-hover rounded text-icon-default transition-colors focus:outline-none {useRegex ? 'text-accent' : ''}" onclick={() => useRegex = !useRegex}>
-          <Regex size={13} />
+        <button aria-label="Use Regular Expression" class="p-1 hover:bg-hover rounded text-icon-default {useRegex ? 'text-accent' : ''}" onclick={() => useRegex = !useRegex}>
+          <Regex size={12} />
         </button>
       </Tooltip>
     </div>
     <div class="flex items-center border-l border-subtle pl-1 gap-0.5 shrink-0">
       <Tooltip content="Previous Match (Shift+Enter)">
-        <button aria-label="Previous Match" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus:outline-none" disabled={matches.length === 0} onclick={prevMatch}>
-          <ChevronUp size={14} />
+        <button aria-label="Previous Match" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30" disabled={matches.length === 0} onclick={prevMatch}>
+          <ChevronUp size={12} />
         </button>
       </Tooltip>
       <Tooltip content="Next Match (Enter)">
-        <button aria-label="Next Match" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus:outline-none" disabled={matches.length === 0} onclick={nextMatch}>
-          <ChevronDown size={14} />
+        <button aria-label="Next Match" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30" disabled={matches.length === 0} onclick={nextMatch}>
+          <ChevronDown size={12} />
         </button>
       </Tooltip>
       <Tooltip content="Close (Esc)">
-        <button aria-label="Close" class="p-1 hover:bg-error hover:text-on-accent rounded text-icon-default ml-1 transition-colors focus:outline-none" onclick={close}>
-          <X size={14} />
+        <button aria-label="Close" class="p-1 hover:bg-error hover:text-on-accent rounded text-icon-default ml-1" onclick={close}>
+          <X size={12} />
         </button>
       </Tooltip>
     </div>
@@ -269,18 +272,18 @@
   {#if isReplaceVisible}
     <div class="flex items-center p-1.5 gap-1.5 pt-0">
       <div class="w-[22px] shrink-0"></div>
-      <div class="flex items-center bg-canvas border border-subtle rounded px-2 py-0.5 flex-1 focus-within:border-focus focus-within:ring-1 focus-within:ring-focus transition-all">
+      <div class="flex items-center bg-canvas border border-subtle rounded px-2 py-0.5 flex-1 focus-within:border-focus">
         <input bind:this={replaceInputEl} type="text" bind:value={replaceQuery} onkeydown={(e) => e.key === 'Enter' && replaceCurrent()} placeholder="Replace" class="bg-transparent border-none outline-none w-full text-[13px] placeholder-muted" />
       </div>
       <div class="flex items-center gap-0.5 shrink-0 pr-1">
         <Tooltip content="Replace (Enter)">
-          <button aria-label="Replace" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus:outline-none" disabled={matches.length === 0} onclick={replaceCurrent}>
-            <Replace size={14} />
+          <button aria-label="Replace" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30" disabled={matches.length === 0} onclick={replaceCurrent}>
+            <Replace size={12} />
           </button>
         </Tooltip>
         <Tooltip content="Replace All">
-          <button aria-label="Replace All" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30 disabled:cursor-not-allowed transition-colors focus:outline-none" disabled={matches.length === 0} onclick={replaceAllMatches}>
-            <ReplaceAll size={14} />
+          <button aria-label="Replace All" class="p-1 hover:bg-hover rounded text-icon-default disabled:opacity-30" disabled={matches.length === 0} onclick={replaceAllMatches}>
+            <ReplaceAll size={12} />
           </button>
         </Tooltip>
       </div>

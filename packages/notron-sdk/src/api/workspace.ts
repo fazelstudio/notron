@@ -15,6 +15,48 @@ import {
 } from './types.js';
 import { NotImplementedError } from '../host/errors.js';
 
+export interface ConfigurationContribution {
+  title: string;
+  category?: string;
+  properties: Record<string, {
+    type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+    default?: unknown;
+    description?: string;
+    enum?: unknown[];
+  }>;
+}
+
+export interface ConfigurationContributionDelegate {
+  registerConfiguration?(contribution: ConfigurationContribution, extensionId: string): Disposable;
+}
+
+let configurationContributionDelegate: ConfigurationContributionDelegate | null = null;
+
+export function setConfigurationContributionDelegate(d: ConfigurationContributionDelegate | null): void {
+  configurationContributionDelegate = d;
+}
+
+export function __registerConfigurationContribution(
+  contribution: ConfigurationContribution,
+  extensionId: string,
+): Disposable {
+  if (configurationContributionDelegate?.registerConfiguration) {
+    return configurationContributionDelegate.registerConfiguration(contribution, extensionId);
+  }
+  return { dispose() {} };
+}
+
+/** Register a runtime configuration schema owned by an extension. */
+export function registerConfiguration(
+  contribution: ConfigurationContribution,
+  extensionId = 'runtime',
+): Disposable {
+  if (!contribution?.title || !contribution.properties) {
+    throw new TypeError('[workspace] registerConfiguration requires a title and properties');
+  }
+  return __registerConfigurationContribution(contribution, extensionId);
+}
+
 export interface WorkspaceDelegate {
   fs?: {
     readFile(uri: string): Promise<Uint8Array>;
@@ -321,6 +363,7 @@ export function __getFsEntries(): Map<string, FsEntry> {
 export const workspace = {
   fs,
   getConfiguration,
+  registerConfiguration,
   onDidChangeConfiguration,
   onDidChangeWorkspaceFolders,
   get workspaceFolders(): WorkspaceFolder[] | undefined {

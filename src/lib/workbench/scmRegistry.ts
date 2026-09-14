@@ -1,9 +1,7 @@
 /**
  * SCM Provider Registry
  *
- * Generic Source Control abstraction. The panel UI is generic and is filled
- * by SCM Providers — Git is one provider, not the only one architecturally.
- * Mirrors VS Code's `scm` contribution point.
+ * Generic source control abstraction with a provider model for the panel UI.
  */
 
 export interface ScmProvider {

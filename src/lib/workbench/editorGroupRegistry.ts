@@ -1,9 +1,8 @@
 /**
  * Editor Group / Tab Manager
  *
- * Single abstraction for manipulating tabs / editor groups. Both the UI and
- * (future) extension API go through this service — no direct DOM manipulation.
- * Mirrors VS Code's editor group / tab API.
+ * Single abstraction for manipulating tabs and editor groups for the UI and
+ * future extension API without direct DOM manipulation.
  */
 
 import { editorStore } from '../stores/editor';

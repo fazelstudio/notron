@@ -1,3 +1,8 @@
+<!--
+ * App
+ *
+ * Application shell composing title bar, activity bar, sidebar, editor, and panels.
+-->
 
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
@@ -29,8 +34,6 @@
   import './lib/commands/runCommands';
   import './lib/commands/editorActionCommands';
   import './lib/commands/searchCommands';
-  import './lib/theme/commands';
-  import './lib/icon-theme/commands';
   import CloseTabDialog from './lib/components/panels/CloseTabDialog.svelte';
   import WelcomeTab from './lib/components/editor/WelcomeTab.svelte';
   import NewFileDialog from './lib/components/panels/NewFileDialog.svelte';
@@ -63,6 +66,7 @@
   import './lib/commands/commandCapabilities';
   import { createGlobalKeybindingHandlers } from './lib/platform/keybindingService';
   import { eventBus } from './lib/utils/eventBus';
+  import { discoverInstalledExtensions, installExtensionFromPalette, uninstallExtensionFromPalette, activateExtensionsForEvent, deactivateExtensions } from './lib/services/extensionService';
   import {
     saveWorkspaceSession,
     debouncedSaveCursorScroll,
@@ -76,6 +80,11 @@
   const tabs = editorStore.tabs;
   const activeTabId = editorStore.activeTabId;
   const ui = uiStore;
+
+  commandRegistry.setTrustGate(() => {
+    const state = uiStore.getSnapshot();
+    return !state.explorerRoot || state.recentWorkspaces.includes(state.explorerRoot);
+  });
 
   let closingTabId = $state<string | null>(null);
   let isClosingWindow = $state(false);
@@ -115,6 +124,16 @@
 
     document.title = windowTitle;
     getCurrentWindow().setTitle(windowTitle).catch(() => {});
+  });
+
+  $effect(() => {
+    const language = activeTab?.language;
+    if (language) void activateExtensionsForEvent(`onLanguage:${language}`);
+  });
+
+  $effect(() => {
+    const view = $ui.activeSidebarPanel;
+    if (view) void activateExtensionsForEvent(`onView:${view}`);
   });
 
   // Record navigation history when active tab changes — but only when the
@@ -261,6 +280,8 @@
         await saveWorkspaceSession();
         navigationStore.reset();
         uiStore.setExplorerRoot(path);
+        await discoverInstalledExtensions(path);
+        await activateExtensionsForEvent('workspaceContains:*');
       }
     });
     
@@ -346,6 +367,7 @@
     recordStartupPhase('frontend-start');
 
     const root = uiStore.getSnapshot().explorerRoot;
+    await discoverInstalledExtensions(root || undefined);
 
     // Hoisted so the crash-recovery phase (outside the try block) can read it.
     let crashFlag = false;
@@ -464,7 +486,7 @@
       console.error('Failed to check/set crash flag', e);
     }
 
-    // Phase 5: Background tasks via requestIdleCallback
+    // Background tasks via requestIdleCallback
     scheduleBackgroundTasks();
     recordStartupPhase('frontend-done');
   }
@@ -655,6 +677,8 @@
     refreshExplorer: () => uiStore.triggerExplorerRefresh(),
     collapseExplorer: () => uiStore.triggerExplorerCollapse(),
     toggleSidebar: () => uiStore.toggleSidebar(),
+    installExtension: () => installExtensionFromPalette(),
+    uninstallExtension: () => uninstallExtensionFromPalette(),
   });
 
   // Palette file index is built lazily (on first palette open) so startup never
@@ -828,6 +852,12 @@
     stagedStartup().catch(console.error);
   });
 
+  onMount(() => {
+    const handleBeforeUnload = () => { void deactivateExtensions(); };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  });
+
   $effect(() => {
     const root = $ui.explorerRoot;
     if (appReady && root && root !== lastLoadedRoot) {
@@ -837,9 +867,9 @@
     }
   });
 
-  // Unified file watcher — the Rust backend owns watching (debounce 0.4,
-  // coalescing, shared ignore rules 5.2) and fans out ONE `fs-change` event
-  // per quiet window (5.1). The frontend only reacts:
+  // Unified file watcher — the Rust backend owns watching (debounce, coalescing,
+  // shared ignore rules) and fans out ONE `fs-change` event per quiet window.
+  // The frontend only reacts:
   //   - FileTree.svelte   → Explorer cache/tree refresh
   //   - Here             → open-tab state (deleted / reload / renamed)
   interface FsChangeItem {
@@ -863,14 +893,14 @@
     let watchTimer: number | undefined;
 
     watchTimer = setTimeout(async () => {
-      // Delegate watching to the Rust unified service (5.1).
+      // Delegate watching to the Rust unified service.
       try {
         await invoke('start_fs_watch', { root: explorerRoot });
         watchStarted = true;
       } catch (e) { console.error("Failed to start Rust file watcher:", e); }
 
-      // D.2/D.7 — populate Git decorations for the Explorer immediately on
-      // workspace open (the backend emits `git-decorations-changed`).
+      // Populate Git decorations for the Explorer immediately on workspace open
+      // (the backend emits `git-decorations-changed`).
       try {
         await invoke('get_repo_state', { cwd: explorerRoot });
       } catch (e) { /* not a repo, git unavailable, etc. */ }
@@ -888,7 +918,7 @@
             if (change.oldPath && change.newPath) {
               editorStore.updateTabPath(change.oldPath, change.newPath);
               changedPaths.add(change.newPath);
-              // Optimistically drop the stale decoration for the old path (D.7);
+              // Optimistically drop the stale decoration for the old path;
               // the backend's git-status-refresh will recompute the delta.
               removedDecoPaths.push(change.oldPath);
             }
@@ -1055,7 +1085,7 @@
     return () => detach();
   });
 
-  // Quick Open vs Command Palette distinction (VS Code parity)
+  // Quick Open vs Command Palette distinction
   // Ctrl+P / quick-open → file list (initialQuery ''), Ctrl+Shift+P / showCommands → command list (initialQuery '>')
   // viewCommands dispatches 'quick-open' for quickOpen and 'open-command-palette' for showCommands (handled in keybindingService)
   // Here we ensure quick-open is actually wired to file mode

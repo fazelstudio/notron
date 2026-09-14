@@ -1,10 +1,7 @@
 /**
  * Walkthrough Registry
  *
- * Onboarding content as data. The Welcome page renders whatever sections and
- * steps are registered, so a contribution adds a step (or a whole section)
- * without editing the page markup. Mirrors the editor's Walkthrough
- * contribution point at a smaller scale.
+ * Registry for onboarding walkthrough sections and steps shown on the Welcome page.
  */
 
 export interface WalkthroughStep {

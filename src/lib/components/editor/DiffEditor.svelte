@@ -1,3 +1,9 @@
+<!--
+ * Diff Editor
+ *
+ * Side-by-side diff view with themed added and removed styling.
+-->
+
 <script module lang="ts">
   import { EditorState } from '@codemirror/state';
   import { EditorView, lineNumbers, highlightSpecialChars } from '@codemirror/view';
@@ -38,13 +44,7 @@
     ".cm-panels-top": { zIndex: "10 !important" },
   });
 
-  /**
-   * Build a diff-coloring theme that derives from global CSS variables so
-   * the diff palette follows any active theme (light/dark, hc, nord, etc.)
-   * instead of hard hex literals. Removed → error/red, Added → success/green,
-   * both via color-mix with the canvas/bg. Gutter text uses --text-on-error
-   * / --text-on-success for contrast in both modes.
-   */
+  // Build a diff-coloring theme derived from global CSS variables so the palette follows the active theme.
   function buildDiffTheme(): ReturnType<typeof EditorView.theme> {
     const del = {
       lineBg: 'color-mix(in srgb, var(--nt-status-error) 12%, var(--nt-editor-bg))',
@@ -63,7 +63,7 @@
     const spacerBdr = 'var(--nt-editor-border)';
 
     return EditorView.theme({
- // Left editor: removed lines
+      // Left editor shows removed lines.
       '&.cm-merge-a .cm-changedLine': {
         backgroundColor: `${del.lineBg} !important`,
         borderLeft: `3px solid ${del.border} !important`,
@@ -89,7 +89,7 @@
         borderRadius: '2px',
       },
 
- // Right editor: added lines
+      // Right editor shows added lines.
       '&.cm-merge-b .cm-changedLine': {
         backgroundColor: `${ins.lineBg} !important`,
         borderLeft: `3px solid ${ins.border} !important`,
@@ -107,7 +107,7 @@
         borderRadius: '2px',
       },
 
- // Spacer / filler (collapsed unchanged context rows)
+      // Spacer for collapsed unchanged context.
       '.cm-mergeSpacer': {
         background: spacerBg,
         borderTop: `1px dashed ${spacerBdr}`,
@@ -154,9 +154,7 @@
     filePath: string;
     originalLabel?: string;
     currentLabel?: string;
-    /** Right (current) side editable — used by the "Working Tree" tab so
-     *  typing there behaves exactly like a normal editor. Commit-compare
-     *  tabs keep both sides read-only. */
+    /** Right side editable for working tree; commit compare stays read-only. */
     editable?: boolean;
     onCurrentChange?: (content: string) => void;
   } = $props();
@@ -190,9 +188,7 @@
     if (!editable) {
       bExtensions.push(EditorState.readOnly.of(true));
     } else {
-      // Push content edits back through the store so autosave / modified
-      // indicators behave exactly like a normal editor tab. The MergeView
-      // itself recomputes the diff chunks live as the doc changes.
+      // Forward edits to the store so autosave and modified indicators stay in sync.
       bExtensions.push(
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -212,7 +208,7 @@
         extensions: bExtensions,
       },
       parent: diffContainer,
-      orientation: "a-b", // side-by-side; MergeView syncs scroll automatically
+      orientation: "a-b", // Side-by-side with synced scrolling.
     });
   });
 

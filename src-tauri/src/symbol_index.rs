@@ -1,6 +1,7 @@
-// Symbol Index
-//
-// Rust module.
+//! Symbol Index
+//! 
+//! Workspace symbol extraction and navigation support.
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

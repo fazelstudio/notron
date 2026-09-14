@@ -96,3 +96,23 @@ export const systemIpc = {
   openNewWindow: () => invoke<void>('open_new_window'),
   showMainWindow: () => invoke<void>('show_main_window')
 };
+
+export interface InstalledExtension {
+  id: string;
+  manifest: any;
+  path: string;
+  source: 'global' | 'workspace';
+}
+
+export interface ExtensionDiscovery {
+  extensions: InstalledExtension[];
+  errors: string[];
+}
+
+export const extensionIpc = {
+  list: (workspace?: string) => invoke<ExtensionDiscovery>('list_installed_extensions', { workspace: workspace ?? null }),
+  install: (packagePath: string) => invoke<InstalledExtension>('install_ntrn_extension', { packagePath }),
+  uninstall: (id: string) => invoke<void>('uninstall_ntrn_extension', { id }),
+  readModule: (extensionPath: string, relativePath: string, workspace?: string) =>
+    invoke<string>('read_extension_module', { extensionPath, relativePath, workspace: workspace ?? null }),
+};

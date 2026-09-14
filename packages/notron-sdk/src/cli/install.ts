@@ -43,16 +43,33 @@ export async function installLocalCommand(ntrnPathArg: string, opts: InstallOpti
  fs.rmSync(p, { recursive: true, force: true });
  }
 
- zip.extractAllTo(destDir, true);
+ let unpackedBytes = 0;
+ for (const entry of zip.getEntries()) {
+ const normalized = entry.entryName.replace(/\\/g, '/');
+ if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
+ throw new Error(`[notron-sdk] unsafe archive path: ${entry.entryName}`);
+ }
+ const target = path.resolve(destDir, normalized);
+ const base = path.resolve(destDir) + path.sep;
+ if (target !== path.resolve(destDir) && !target.startsWith(base)) {
+ throw new Error(`[notron-sdk] unsafe archive path: ${entry.entryName}`);
+ }
+ if (entry.isDirectory) {
+ fs.mkdirSync(target, { recursive: true });
+ continue;
+ }
+ const data = entry.getData();
+ unpackedBytes += data.length;
+ if (unpackedBytes > 250 * 1024 * 1024) {
+ throw new Error('[notron-sdk] unpacked package exceeds the 250 MB limit');
+ }
+ fs.mkdirSync(path.dirname(target), { recursive: true });
+ fs.writeFileSync(target, data, { flag: 'wx' });
+ }
  console.log(`[notron-sdk] installed ${extensionId} → ${destDir}`);
  console.log('[notron-sdk] NOTE: install-local is for development/testing only.');
- console.log('[notron-sdk] Whether Notron core actually reads ~/.notron/extensions-dev at startup');
- console.log('[notron-sdk] is the responsibility of core (see NOTRON_SDK_04_PACKAGE_CLI and');
- console.log('[notron-sdk] IMPLEMENTATION_LOG.md Phase 5 Gap — core does not yet auto-load .ntrn).');
-
- // Gap check: does core have loader?
- // We note that Notron core currently has no `.ntrn` loader nor extensions-dev reader
- // (verified: no watcher for that dir, no Tauri command to load .ntrn).
+ console.log('[notron-sdk] For user installation, use Notron Command Palette →');
+ console.log('[notron-sdk] Extensions: Install from .ntrn…');
 
  return destDir;
 }

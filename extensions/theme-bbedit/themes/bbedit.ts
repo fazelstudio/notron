@@ -1,2 +1,7 @@
-// placeholder for bbedit
+/**
+ * Bbedit Theme
+ *
+ * Theme definition placeholder for bbedit.
+ */
+
 export {};

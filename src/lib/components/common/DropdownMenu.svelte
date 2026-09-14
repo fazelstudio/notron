@@ -1,3 +1,9 @@
+<!--
+ * Dropdown Menu
+ *
+ * Generic dropdown menu with nested items and keyboard support.
+-->
+
 <script lang="ts">
   import { positionMenu, portal } from '../../utils/menuPosition';
   import type { Snippet } from 'svelte';
@@ -104,25 +110,25 @@
       bind:this={menuElement}
       use:portal
       role="presentation"
-      class="fixed min-w-[160px] rounded-md border p-1 z-[2147483646] animate-in fade-in duration-100 bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)] text-[var(--nt-overlay-fg)]"
+      class="fixed min-w-[160px] z-[2147483646] nt-menu-panel"
       style="box-shadow: var(--nt-overlay-shadow);"
       onclick={(e) => e.stopPropagation()}
       oncontextmenu={(e) => e.stopPropagation()}
     >
       {#each items as item (item.id || item.label)}
         {#if item.separator}
-          <div class="h-px my-1 bg-[var(--nt-overlay-border)]"></div>
+          <div class="nt-menu-separator"></div>
         {:else}
           <div class="relative w-full" role="presentation" onmouseenter={() => handleMouseEnter(item)}>
             <button
-              class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors {!item.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted'}"
+              class="nt-menu-item justify-between {!item.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted'}"
               disabled={item.disabled}
               onclick={(e) => handleItemAction(e, item)}
               onmouseenter={(e) => (e.target as HTMLElement).focus()}
             >
               <span>{item.label}</span>
               {#if item.shortcut}
-                <span class="ml-auto text-[10px] text-muted opacity-80">{item.shortcut}</span>
+                <span class="ml-4 text-[length:var(--nt-chrome-font-tip)] text-muted opacity-80">{item.shortcut}</span>
               {/if}
               {#if item.items}
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-2 opacity-60"><polyline points="9 18 15 12 9 6"/></svg>
@@ -131,22 +137,22 @@
             
             {#if item.items && openSubmenuId === (item.id || item.label)}
               <div
-                class="absolute top-0 mt-0 min-w-[160px] rounded-md border p-1 z-[101] animate-in fade-in duration-100 bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)] text-[var(--nt-overlay-fg)] {align === 'right' ? 'right-full mr-1' : 'left-full ml-1'}"
+                class="absolute top-0 mt-0 min-w-[160px] z-[101] nt-menu-panel {align === 'right' ? 'right-full mr-1' : 'left-full ml-1'}"
                 style="box-shadow: var(--nt-overlay-shadow);"
               >
                 {#each item.items as subItem (subItem.id || subItem.label)}
                   {#if subItem.separator}
-                    <div class="h-px my-1 bg-[var(--nt-overlay-border)]"></div>
+                    <div class="nt-menu-separator"></div>
                   {:else}
                     <button
-                      class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors {!subItem.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted'}"
+                      class="nt-menu-item justify-between {!subItem.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted'}"
                       disabled={subItem.disabled}
                       onclick={(e) => { e.stopPropagation(); if (subItem.action) subItem.action(); close(); }}
                       onmouseenter={(e) => (e.target as HTMLElement).focus()}
                     >
                       <span>{subItem.label}</span>
                       {#if subItem.shortcut}
-                        <span class="ml-auto text-[10px] text-muted opacity-80">{subItem.shortcut}</span>
+                        <span class="ml-4 text-[length:var(--nt-chrome-font-tip)] text-muted opacity-80">{subItem.shortcut}</span>
                       {/if}
                     </button>
                   {/if}

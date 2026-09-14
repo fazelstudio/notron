@@ -1,6 +1,5 @@
 import { vscodeDark, defaultSettingsVscodeDark } from '@uiw/codemirror-themes-all';
-import { registerTheme } from '../../../src/lib/theme/registry';
-import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+import { theming, type ExtensionContext } from 'notron-sdk';
 
 export const id = 'notron-dark';
 export const label = 'Notron Dark';
@@ -9,5 +8,8 @@ export const uiTheme = 'dark';
 export const extension = vscodeDark;
 export const settings = defaultSettingsVscodeDark;
 
-registerTheme(id, { extension, settings, isDark, label, uiTheme });
-__registerTheme({ id, label, uiTheme, path: './themes/notron-dark.ts' });
+export async function activate(context: ExtensionContext): Promise<void> {
+  context.subscriptions.push(theming.registerTheme({ id, label, uiTheme: uiTheme as any, path: "./themes/notron-dark.ts", extension, settings, isDark }));
+}
+
+export async function deactivate(): Promise<void> {}

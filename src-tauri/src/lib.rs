@@ -1,6 +1,7 @@
-// Lib
-//
-// Rust module.
+//! Library
+//! 
+//! Tauri application setup and command registration.
+
 mod config;
 mod db;
 mod file_ops;
@@ -12,7 +13,9 @@ mod symbol_index;
 mod watcher_service;
 mod workspace_cache;
 mod git_service;
-mod discord;
+mod extensions;
+// Native external-activity providers are optional extension capabilities.
+// The core only exposes generic Tauri and SDK host plumbing.
 
 use serde::Serialize;
 use tauri::{Manager, Emitter};
@@ -68,7 +71,7 @@ async fn open_new_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// ── Startup State: Single IPC round-trip for ALL startup data ──
+// Startup state consolidated into a single IPC round-trip.
 
 #[derive(Serialize, Debug, Clone)]
 struct StartupState {
@@ -310,7 +313,6 @@ pub fn run() {
                 active_searches: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             });
             app.manage(git_service::GitState::new(app.handle()));
-            app.manage(discord::DiscordState::new());
 
             // Git detected ONCE at startup (background, non-blocking):
             // fix the macOS shell PATH first, then run the tiered detection and
@@ -344,6 +346,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // ── Startup ──
             load_startup_state,
+            // ── Extensions ──
+            extensions::list_installed_extensions,
+            extensions::install_ntrn_extension,
+            extensions::uninstall_ntrn_extension,
+            extensions::read_extension_module,
             // ── Legacy DB Commands ──
             db::add_recent_file,
             db::get_recent_files,
@@ -453,9 +460,6 @@ pub fn run() {
             git_service::git_file_diff,
             git_service::git_log,
             git_service::get_commit_files,
-            discord::init_discord_presence,
-            discord::set_discord_activity,
-            discord::clear_discord_presence,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,7 +1,14 @@
+<!--
+ * Rename Input
+ *
+ * Inline rename input for explorer tree nodes.
+-->
+
 <!-- svelte-ignore state_referenced_locally -->
 <script lang="ts">
   import { fileService } from '../../services/fileService';
   import { uiStore } from '../../stores/ui';
+  import { TREE_INDENT_PX } from '../../constants';
   
   let { initialName, node, depth }: { initialName: string; node: any; depth: number } = $props();
   let val = $state(initialName);
@@ -35,7 +42,7 @@
   }
 </script>
 
-<div class="flex items-center gap-1.5 px-2 py-1 w-full text-primary" style="padding-left: {depth * 12 + 8}px">
+<div class="flex items-center gap-1.5 px-2 py-1 w-full text-primary" style="padding-left: {depth * TREE_INDENT_PX + 8}px">
   <span class="w-3.5 shrink-0 inline-block"></span>
   <span class="shrink-0 text-accent">
     {#if node.is_dir}

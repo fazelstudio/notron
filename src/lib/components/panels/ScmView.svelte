@@ -1,16 +1,9 @@
 <script lang="ts">
 /**
- * ScmView
+ * SCM View
  *
- * UI component..
+ * Generic source control host that renders all registered SCM providers.
  */
-  /**
-   * SCM View
-   *
-   * Generic Source Control view. It renders whatever SCM providers are
-   * registered (Git is one of them, not the only one architecturally), so a
-   * new version-control provider is a registration — no shell change.
-   */
   import { scmRegistry } from '../../workbench/scmRegistry';
 
   let version = $state(0);

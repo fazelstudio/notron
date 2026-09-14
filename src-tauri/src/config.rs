@@ -1,6 +1,7 @@
-// Config
-//
-// Rust module.
+//! Config
+//! 
+//! Persistent application configuration backed by config.toml.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -90,7 +91,7 @@ pub async fn set_config(
         .map_err(|e| e.to_string())?
 }
 
-// ── Critical Config (Pre-render sync read) ──
+// Critical config loaded synchronously before first paint.
 
 /// Pre-render critical config read synchronously from a small JSON file.
 /// NOT from SQLite — SQLite is too slow for pre-render.

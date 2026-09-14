@@ -1,2 +1,7 @@
-// placeholder for duotone-dark
+/**
+ * Duotone Dark Theme
+ *
+ * Theme definition placeholder for duotone-dark.
+ */
+
 export {};

@@ -1,6 +1,7 @@
-// Startup
-//
-// Rust module.
+//! Startup
+//! 
+//! Startup timing instrumentation for performance profiling.
+
 use std::sync::Mutex;
 use std::time::Instant;
 use serde::Serialize;

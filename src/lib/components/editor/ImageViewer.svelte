@@ -1,8 +1,15 @@
+<!--
+ * Image Viewer
+ *
+ * Displays image files with zoom and git revision support.
+-->
+
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { getGitFileBinary } from '../../services/git';
   import { dirname } from '@tauri-apps/api/path';
-  
+  import { eventBus } from '../../utils/eventBus';
+
   let { filePath, gitRevision }: { filePath: string; gitRevision?: string } = $props();
 
   let src = $state('');
@@ -15,6 +22,7 @@
     let url: string | null = null;
     if (filePath) {
       loading = true;
+      eventBus.emit('editor:preview-loading', { path: filePath, loading: true });
       
       const fetchBinary = async () => {
         if (gitRevision && gitRevision !== 'working-tree') {
@@ -40,11 +48,19 @@
           url = URL.createObjectURL(blob);
           src = url;
           loading = false;
+          eventBus.emit('editor:preview-loading', { path: filePath, loading: false });
         })
-        .catch((err) => { if (!cancelled) { console.error(err); loading = false; } });
+        .catch((err) => {
+          if (!cancelled) {
+            console.error(err);
+            loading = false;
+            eventBus.emit('editor:preview-loading', { path: filePath, loading: false });
+          }
+        });
     }
     return () => {
       cancelled = true;
+      eventBus.emit('editor:preview-loading', { path: filePath, loading: false });
       if (url) { URL.revokeObjectURL(url); url = null; }
     };
   });

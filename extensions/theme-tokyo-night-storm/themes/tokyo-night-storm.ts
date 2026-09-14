@@ -1,2 +1,7 @@
-// placeholder for tokyo-night-storm
+/**
+ * Tokyo Night Storm Theme
+ *
+ * Theme definition placeholder for tokyo-night-storm.
+ */
+
 export {};

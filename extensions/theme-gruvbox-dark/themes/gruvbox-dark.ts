@@ -1,2 +1,7 @@
-// placeholder for gruvbox-dark
+/**
+ * Gruvbox Dark Theme
+ *
+ * Theme definition placeholder for gruvbox-dark.
+ */
+
 export {};

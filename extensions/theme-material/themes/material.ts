@@ -1,2 +1,7 @@
-// placeholder for material
+/**
+ * Material Theme
+ *
+ * Theme definition placeholder for material.
+ */
+
 export {};

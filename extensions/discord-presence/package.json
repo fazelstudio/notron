@@ -1,0 +1,43 @@
+{
+  "id": "notron.discord-presence",
+  "name": "discord-presence",
+  "displayName": "Discord Presence",
+  "description": "Show your coding activity on Discord via Rich Presence",
+  "version": "0.1.0",
+  "publisher": "notron",
+  "engines": {
+    "notron": "^0.1.0"
+  },
+  "main": "./src/extension.ts",
+  "activationEvents": ["*"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "discord.enablePresence",
+        "title": "Discord Presence: Enable",
+        "category": "Discord"
+      },
+      {
+        "command": "discord.disablePresence",
+        "title": "Discord Presence: Disable",
+        "category": "Discord"
+      },
+      {
+        "command": "discord.togglePresence",
+        "title": "Discord Presence: Toggle",
+        "category": "Discord"
+      }
+    ],
+    "configuration": {
+      "title": "Discord Presence",
+      "category": "general",
+      "properties": {
+        "discord_presence": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show your coding activity on your Discord profile."
+        }
+      }
+    }
+  }
+}

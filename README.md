@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/fazelllyyy/notron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
-  <a href="https://github.com/fazelllyyy/notron"><img src="https://img.shields.io/github/stars/fazelllyyy/notron?style=flat&logo=github" alt="GitHub stars" /></a>
-  <a href="https://github.com/fazelllyyy/notron/issues"><img src="https://img.shields.io/github/issues/fazelllyyy/notron" alt="GitHub issues" /></a>
+  <a href="https://github.com/fazelstudio/notron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://github.com/fazelstudio/notron"><img src="https://img.shields.io/github/stars/fazelstudio/notron?style=flat&logo=github" alt="GitHub stars" /></a>
+  <a href="https://github.com/fazelstudio/notron/issues"><img src="https://img.shields.io/github/issues/fazelstudio/notron" alt="GitHub issues" /></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/package%20manager-Bun-fcd34d" alt="Package manager: Bun" /></a>
   <a href="https://v2.tauri.app"><img src="https://img.shields.io/badge/Tauri-2.0-blueviolet" alt="Tauri 2" /></a>
   <a href="https://svelte.dev"><img src="https://img.shields.io/badge/Svelte-5-orange" alt="Svelte 5" /></a>
@@ -44,6 +44,20 @@
 - **Integrated Terminal** — xterm.js-powered terminal.
 - **Source Control (Git)** — staging, commits, push/pull, and diffs.
 - **Run & Debug** — DAP (Debug Adapter Protocol) support with breakpoints.
+- **Runtime Extensions** — install validated `.ntrn` packages from the Command Palette
+  (`Extensions: Install from .ntrn…`). Packages are persisted in the application data
+  directory, discovered at startup and workspace changes, and activated through the
+  `notron-sdk` lifecycle.
+
+### Runtime extension packages
+
+Build packages with the SDK CLI (`ntrn package`), then install them from the command
+palette. Notron validates the manifest and bundled JavaScript entry point, rejects
+archive path traversal, limits archive size, and extracts atomically. Installed
+extensions may import only `notron-sdk`; the host loads the CLI's bundled CommonJS
+entry and honors `activationEvents` such as `onStartupFinished`, `onCommand:*`, and
+`workspaceContains:*`. Arbitrary native/Node modules are intentionally not supported
+inside the webview runtime.
 
 ## 🧱 Architecture
 
@@ -117,4 +131,4 @@ If you discover a vulnerability, please report it following the guidelines in [S
 
 ## 📝 License
 
-Distributed under the [MIT License](LICENSE). Copyright © 2026 **Fazelllyyy (Zulfazli)**.
+Distributed under the [MIT License](LICENSE). Copyright © 2026 **fazelstudio (Zulfazli)**.

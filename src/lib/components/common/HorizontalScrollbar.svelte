@@ -1,3 +1,9 @@
+<!--
+ * Horizontal Scrollbar
+ *
+ * Custom horizontal scrollbar synchronized with the editor scroll container.
+-->
+
 <script lang="ts">
   import { onDestroy } from 'svelte';
 
@@ -94,11 +100,11 @@
   .custom-horizontal-scrollbar {
     position: absolute;
     bottom: 0;
-    height: 14px;
+    height: var(--nt-scrollbar-size);
     z-index: 9999999;
     background: transparent;
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity var(--nt-motion-fast);
   }
 
   :global(.editor-wrapper:hover) .custom-horizontal-scrollbar,
@@ -112,7 +118,7 @@
     background-color: var(--scrollbar-thumb);
     border-radius: 0;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color var(--nt-motion-fast);
   }
 
   .custom-horizontal-scrollbar:hover .thumb,

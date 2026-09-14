@@ -1,3 +1,9 @@
+<!--
+ * Split View
+ *
+ * Recursive split container rendering editor panes in rows or columns.
+-->
+
 <script lang="ts">
   import { splitStore } from '../../stores/split';
   import type { SplitNode } from '../../stores/split';

@@ -1,3 +1,9 @@
+<!--
+ * Split Editor Pane
+ *
+ * Individual pane within the split editor managing tabs and file loading.
+-->
+
 <script lang="ts">
   import { eventBus } from '../../utils/eventBus';
   import { editorStore } from '../../stores/editor';
@@ -61,15 +67,26 @@
   let totalPanes = $derived(Object.keys($splitState.panes).length);
 
   // Prefer editorStore buffer when the split copy is missing/empty — preview
-  // already reads editorStore, and a stale empty split buffer was what made
-  // markdown "code" mode look wiped while preview still rendered.
+  // already reads editorStore (by path), and a stale empty split buffer was what
+  // made markdown "code" mode look wiped while preview still rendered.
   const editorTabs = editorStore.tabs;
   let resolvedContent = $derived.by(() => {
     if (!activeTab) return null;
     const fromSplit = activeTab.content;
     if (typeof fromSplit === 'string' && fromSplit.length > 0) return fromSplit;
-    const fromEditor = $editorTabs.find((t: any) => t.id === activeTab.id)?.content;
-    if (typeof fromEditor === 'string') return fromEditor;
+
+    const tabsSnap = $editorTabs as any[];
+    const byId = tabsSnap.find((t) => t.id === activeTab.id)?.content;
+    if (typeof byId === 'string' && byId.length > 0) return byId;
+
+    // Match MarkdownPreview: resolve by path so a ghost/desynced tab id still
+    // finds the real buffer (PRD.md was the usual victim).
+    const byPath = tabsSnap.find(
+      (t) => t.path === activeTab.path && t.language !== 'markdown-preview'
+    )?.content ?? tabsSnap.find((t) => t.path === activeTab.path)?.content;
+    if (typeof byPath === 'string' && byPath.length > 0) return byPath;
+
+    if (typeof byId === 'string') return byId;
     return fromSplit ?? null;
   });
 
@@ -436,13 +453,13 @@
 >
   <!-- Tab Bar -->
   {#if tabs.length > 0}
-  <div class="pane-tabs flex h-9 shrink-0 bg-[var(--nt-tabbar-bg)] relative" class:border-b={!$ui.isBreadcrumbsEnabled} class:border-[var(--nt-tab-border)]={!$ui.isBreadcrumbsEnabled} oncontextmenu={handleEmptyAreaContextMenu}>
+  <div class="pane-tabs flex h-[var(--nt-tab-height)] shrink-0 bg-[var(--nt-tabbar-bg)] relative" class:border-b={!$ui.isBreadcrumbsEnabled} class:border-[var(--nt-tab-border)]={!$ui.isBreadcrumbsEnabled} oncontextmenu={handleEmptyAreaContextMenu}>
     <!-- Editor title actions (top-right): registry-driven menu + close pane -->
     <div class="absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center gap-0.5">
       <ViewTitleMenu menuId="editor/title" />
     {#if totalPanes > 1}
     <button
-        class="pane-close-btn flex items-center justify-center w-5 h-5 rounded text-icon-default hover:text-icon-active hover:bg-hover transition-colors"
+        class="pane-close-btn flex items-center justify-center w-5 h-5 rounded text-icon-default hover:text-icon-active hover:bg-hover"
       onclick={(e) => { e.stopPropagation(); handleClosePane(); }}
       title="Close Pane"
     >
@@ -460,7 +477,7 @@
         <div
           role="tab"
           tabindex="0"
-          class="flex shrink-0 items-center gap-2 px-3 min-w-28 cursor-pointer border-t border-l border-r -ml-px first:ml-0 border-[var(--nt-tab-border)]"
+          class="flex shrink-0 items-center gap-2 px-2 min-w-28 text-xs border-t border-l border-r -ml-px first:ml-0 border-[var(--nt-tab-border)]"
           class:bg-[var(--nt-tab-active-bg)]={activeTabId === tab.id}
           class:text-primary={activeTabId === tab.id}
           class:border-t-2={activeTabId === tab.id}
@@ -510,11 +527,11 @@
           {/if}
 
           <button
-            class="p-0.5 rounded transition-colors hover:bg-active text-icon-default hover:text-icon-active shrink-0"
+            class="p-0.5 rounded hover:bg-active text-icon-default hover:text-icon-active shrink-0"
             onclick={(e) => { e.stopPropagation(); handleTabClose(tab.id); }}
             aria-label="Close tab"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       {/each}
@@ -570,7 +587,15 @@
         {@const paneContent = resolvedContent}
         
         {#if EditorComponent}
-          <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} hideContent={true} isHeaderOnly={true}>
+          {#key activeTab.id}
+          <EditorComponent
+            tabId={activeTab.id}
+            content={paneContent ?? ''}
+            filePath={activeTab.path}
+            hideContent={true}
+            isHeaderOnly={true}
+            headerSeparator={!$ui.isBreadcrumbsEnabled}
+          >
               {#snippet topRightOverlay()}
                 {#if isMd}
                   <MarkdownViewToggle {activeTab} />
@@ -589,13 +614,21 @@
                 </div>
               {:else if viewMode === 'code'}
                 <div class="absolute inset-0 [&_.cm-panels-top]:!hidden bg-editor">
-                  <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} />
+                  {#if paneContent !== null}
+                    {#key `${activeTab.id}:code`}
+                      <EditorComponent tabId={activeTab.id} content={paneContent} filePath={activeTab.path} loadingIndicator={false} />
+                    {/key}
+                  {/if}
                 </div>
               {:else if viewMode === 'split'}
                 <div class="absolute inset-0 flex h-full w-full bg-editor">
                   {#if isMd}
                     <div class="flex-1 flex overflow-hidden relative border-r border-border [&_.cm-panels-top]:!hidden">
-                      <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} />
+                      {#if paneContent !== null}
+                        {#key `${activeTab.id}:split-code`}
+                          <EditorComponent tabId={activeTab.id} content={paneContent} filePath={activeTab.path} loadingIndicator={false} />
+                        {/key}
+                      {/if}
                     </div>
                     <div class="flex-1 flex overflow-hidden relative">
                       {#if MarkdownPreviewComponent}
@@ -613,16 +646,21 @@
                       {/if}
                     </div>
                     <div class="flex-1 flex overflow-hidden relative [&_.cm-panels-top]:!hidden">
-                      <EditorComponent tabId={activeTab.id} content={paneContent ?? ''} filePath={activeTab.path} />
+                      {#if paneContent !== null}
+                        {#key `${activeTab.id}:split-svg-code`}
+                          <EditorComponent tabId={activeTab.id} content={paneContent} filePath={activeTab.path} loadingIndicator={false} />
+                        {/key}
+                      {/if}
                     </div>
                   {/if}
                 </div>
               {/if}
             </EditorComponent>
+          {/key}
         {:else if viewMode === 'preview' || viewMode === 'image'}
           <!-- Preview can render before the Editor chunk finishes lazy-loading -->
           <div class="absolute inset-0 bg-editor flex flex-col">
-            <div class="flex items-center justify-end px-2 h-8 shrink-0">
+            <div class="flex items-center justify-end px-2 h-8 shrink-0" class:border-b={!$ui.isBreadcrumbsEnabled} class:border-border={!$ui.isBreadcrumbsEnabled}>
               {#if isMd}
                 <MarkdownViewToggle {activeTab} />
               {:else}
@@ -714,7 +752,7 @@
     bind:this={ctxMenuElement}
     use:portal
     data-notron-context-menu="true"
-    class="fixed min-w-[180px] rounded-md border p-1 shadow-elevated z-[2147483646] animate-in fade-in duration-100 bg-surface-2 border-subtle text-primary"
+    class="fixed min-w-[180px] z-[2147483646] nt-menu-panel"
     style="left: {ctxMenu.x}px; top: {ctxMenu.y}px;"
     role="presentation"
     onclick={(e) => e.stopPropagation()}
@@ -722,16 +760,16 @@
   >
     {#each ctxMenu.items as item, i (item.id || i)}
       {#if item.separator}
-        <div class="h-px my-1 bg-subtle"></div>
+        <div class="nt-menu-separator"></div>
       {:else}
         <button
-          class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors {!item.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted opacity-50 cursor-not-allowed'}"
+          class="nt-menu-item justify-between {!item.disabled ? 'hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary' : 'text-muted opacity-50'}"
           disabled={item.disabled}
           onclick={(e) => { e.stopPropagation(); if (item.action) item.action(); closeCtxMenu(); }}
         >
           <span>{item.label}</span>
           {#if item.shortcut}
-            <span class="ml-auto text-[10px] text-muted opacity-80 pl-4">{item.shortcut}</span>
+            <span class="ml-4 text-[length:var(--nt-chrome-font-tip)] text-muted opacity-80 pl-4">{item.shortcut}</span>
           {/if}
         </button>
       {/if}
@@ -751,7 +789,7 @@
   }
   .pane-close-btn {
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--nt-motion-fast);
   }
   .pane-tabs:hover .pane-close-btn {
     opacity: 1;

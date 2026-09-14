@@ -1,2 +1,7 @@
-// placeholder for nord
+/**
+ * Nord Theme
+ *
+ * Theme definition placeholder for nord.
+ */
+
 export {};

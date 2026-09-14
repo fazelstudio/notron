@@ -179,6 +179,32 @@
   --color-untracked: var(--nt-untracked);
   --elevated-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12);
   --elevated-shadow: var(--nt-overlay-shadow);
+
+  /* ── Geometry tokens (native desktop density) ──────────────────────────
+     Single source of truth for sizing, spacing, radius and motion across
+     every floating list (menu, context menu, palette, quick pick, select).
+     Components consume these instead of hardcoding their own numbers. */
+  --nt-menu-item-min-height: 26px;
+  --nt-menu-item-pad-x: 8px;
+  --nt-menu-item-pad-y: 3px;
+  --nt-menu-panel-pad: 4px;
+  --nt-menu-separator-gap: 4px;
+  --nt-menu-icon-size: 14px;
+  --nt-overlay-radius: 4px;
+  --nt-dialog-radius: 6px;
+  --nt-control-height: 26px;
+  --nt-control-pad-x: 8px;
+  --nt-chrome-font: 12px;
+  --nt-chrome-font-sm: 11px;
+  --nt-chrome-font-tip: 10px;
+  --nt-chrome-line: 1.333333;
+  --nt-tree-row-height: 26px;
+  --nt-tree-indent: 12px;
+  --nt-tab-height: 32px;
+  --nt-statusbar-height: 24px;
+  --nt-scrollbar-size: 10px;
+  --nt-motion-instant: 80ms;
+  --nt-motion-fast: 100ms;
 }
 
 
@@ -218,9 +244,9 @@
 }
 
 /* ── Git gutter plugin (@fazelstudio/codemirror-gitgutter) ─────────────────────
-   Same pattern as the breadcrumbs: the plugin falls back to hardcoded VSCode
-   colors when these variables are missing. Map them to the semantic status
-   tokens so added/modified/deleted follow the active theme. */
+   The plugin falls back to hardcoded colors when these variables are missing.
+   Map them to the semantic status tokens so added/modified/deleted follow the
+   active theme. */
 :root {
   --cm-gitgutter-added-color: var(--nt-status-success);
   --cm-gitgutter-modified-color: var(--nt-status-warning);
@@ -420,6 +446,62 @@
 .prose code::before { content: none !important; }
 .prose code::after { content: none !important; }
 
+/* ── Native density shared classes ─────────────────────────────────────────
+   One definition for every selectable floating-list row. Menu, context
+   menu, palette, quick pick and select options all share these so row
+   height, padding, radius and motion stay identical. */
+.nt-menu-panel {
+  padding: var(--nt-menu-panel-pad);
+  border-radius: var(--nt-overlay-radius);
+  border: 1px solid var(--nt-overlay-border);
+  background: var(--nt-overlay-bg);
+  color: var(--nt-overlay-fg);
+  box-shadow: var(--nt-overlay-shadow);
+}
+.nt-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--nt-menu-item-min-height);
+  padding: var(--nt-menu-item-pad-y) var(--nt-menu-item-pad-x);
+  font-size: var(--nt-chrome-font);
+  line-height: var(--nt-chrome-line);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--nt-motion-instant), color var(--nt-motion-instant);
+}
+.nt-menu-separator {
+  height: 1px;
+  margin: var(--nt-menu-separator-gap) 0;
+  background: var(--nt-overlay-border);
+}
+.nt-dialog-panel {
+  border-radius: var(--nt-dialog-radius);
+  border: 1px solid var(--nt-overlay-border);
+  background: var(--nt-overlay-bg);
+  color: var(--nt-overlay-fg);
+  box-shadow: var(--nt-overlay-shadow);
+}
+.nt-control {
+  min-height: var(--nt-control-height);
+  padding: 0 var(--nt-control-pad-x);
+  font-size: var(--nt-chrome-font);
+  line-height: var(--nt-chrome-line);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* ── Motion cap (native instant feedback) ──────────────────────────────────
+   Every color/opacity/transform utility transition resolves in at most the
+   fast token, so hover and press feedback feels instant everywhere. */
+.transition-colors,
+.transition-opacity,
+.transition-transform,
+.transition-shadow {
+  transition-duration: var(--nt-motion-fast) !important;
+}
+
 /* ── Markdown preview code block copy button ────────────────────────────────── */
 .md-code-block {
   position: relative;
@@ -436,9 +518,8 @@
   border: 1px solid var(--nt-editor-border);
   background: var(--nt-overlay-bg);
   color: var(--nt-prim-fg-muted);
-  cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  transition: opacity var(--nt-motion-fast), color var(--nt-motion-fast), background var(--nt-motion-fast);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -485,9 +566,13 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
 }
 
 @layer base {
-  button, [role="button"], [role="menuitem"], [role="tab"] {
+  button, [role="button"], [role="menuitem"], [role="tab"], [role="option"], [role="treeitem"], [role="switch"] {
     background-color: transparent;
     cursor: pointer;
+  }
+  a[href] {
+    cursor: pointer;
+  }
   *:focus-visible {
     outline: 1px solid var(--nt-focus-border);
     outline-offset: 1px;
@@ -497,12 +582,11 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
     border-color: var(--nt-prim-border);
     cursor: not-allowed;
   }
-  }
 }
 
 ::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+  width: var(--nt-scrollbar-size);
+  height: var(--nt-scrollbar-size);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -517,7 +601,7 @@ div:not(.cm-content):not(.cm-line):not(.selectable)::selection {
 .cm-minimap-container {
   cursor: default;
   position: absolute !important;
-  right: 14px !important;
+  right: var(--nt-scrollbar-size) !important;
   top: 0 !important;
   bottom: 0 !important;
   width: 150px;
@@ -586,7 +670,7 @@ body.is-dragging [data-node-path]:not(.drop-valid) {
 }
 
 /* High-contrast surfaces intentionally collapse to one black/white canvas.
-   Borders remain the only region separators, matching VS Code HC behavior. */
+   Borders remain the only region separators. */
 html[data-nt-high-contrast="true"] body,
 html[data-nt-high-contrast="true"] #root,
 html[data-nt-high-contrast="true"] .pane-container,

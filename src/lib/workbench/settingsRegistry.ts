@@ -73,14 +73,11 @@ export const settingsRegistry = new SettingsRegistry();
 // `category` matches a Settings section id (general, appearance, editor, files,
 // Search, explorer, terminal) and `default` mirrors HARDCODED_DEFAULTS.
 settingsRegistry.registerAll([
-  { key: 'discord_presence', type: 'boolean', default: true, title: 'Discord Presence', description: 'Show your coding activity on your Discord profile.', category: 'general' },
   { key: 'confirm_delete', type: 'boolean', default: true, title: 'Confirm Before Delete', description: 'Show a confirmation dialog before deleting files or folders.', category: 'general' },
   { key: 'default_svg_view', type: 'enum', default: 'image', enum: ['image', 'code', 'split'], title: 'Default SVG View', description: 'How SVG files open by default in the editor.', category: 'general' },
   { key: 'default_md_view', type: 'enum', default: 'preview', enum: ['preview', 'code', 'split'], title: 'Default Markdown View', description: 'How Markdown files open by default in the editor.', category: 'general' },
-  { key: 'theme', type: 'string', default: 'system', title: 'Theme', description: 'Controls the overall color scheme of the application.', category: 'appearance' },
   { key: 'font_family', type: 'string', default: 'JetBrains Mono, Consolas, monospace', title: 'Font Family', description: 'The font used in the code editor.', category: 'appearance' },
   { key: 'font_size', type: 'number', default: 14, min: 10, max: 32, step: 1, title: 'Font Size', description: 'The font size used in the editor.', category: 'appearance' },
-  { key: 'icon_theme', type: 'string', default: 'default', title: 'Icon Theme', description: 'File icons displayed in the explorer sidebar.', category: 'appearance' },
   { key: 'tab_size', type: 'number', default: 4, min: 2, max: 8, step: 1, title: 'Tab Size', description: 'Number of spaces inserted when pressing Tab.', category: 'editor' },
   { key: 'word_wrap', type: 'boolean', default: false, title: 'Word Wrap', description: 'Wrap long lines that exceed the editor width.', category: 'editor' },
   { key: 'line_numbers', type: 'boolean', default: true, title: 'Line Numbers', description: 'Show or hide line numbers in the editor gutter.', category: 'editor' },

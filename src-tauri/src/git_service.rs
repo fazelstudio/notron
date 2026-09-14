@@ -1,8 +1,7 @@
-// ── Source Control (Git Integration) ─────────────────────────────────────────
-//
-// Git is integrated by shelling out to the git CLI (credential-helper
-// compatibility + always-latest features) instead of libgit2. Key design
-// points:
+//! Git Service
+//! 
+//! Git integration via CLI with tiered detection and state management.
+
 //
 //   * Tiered Git detection: PATH → per-OS common locations → Windows registry /
 //     macOS xcode-select → manual override. Results are cached in memory AND
@@ -108,7 +107,7 @@ pub struct RepoState {
     /// Current branch name. "(detached)" when HEAD is detached.
     pub branch: Option<String>,
     pub has_upstream: bool,
-    /// Full upstream ref, e.g. "origin/main". Mirrors VSCode's `HEAD.upstream`.
+    /// Full upstream ref, e.g. "origin/main".
     #[serde(default)]
     pub upstream: Option<String>,
     /// Remote name of the upstream, e.g. "origin".
@@ -116,8 +115,7 @@ pub struct RepoState {
     pub upstream_remote: Option<String>,
     pub ahead: u32,
     pub behind: u32,
-    /// Short (8-char) HEAD commit hash. `None` when the branch is unborn
-    /// (repo initialized but no commit yet) — VSCode treats this as "no HEAD".
+    /// Short (8-char) HEAD commit hash. `None` when the branch has no commits yet.
     #[serde(default)]
     pub head_short: Option<String>,
     /// True when the current branch has no commit yet (freshly initialized repo).
@@ -641,7 +639,7 @@ fn code_priority(code: &str) -> u8 {
 
 /// For every changed file, mark every ancestor folder (relative to the
 /// workspace root) with the highest-priority decoration present underneath it.
-/// Folders keep a single badge (most significant code), matching VS Code exactly.
+/// Folders keep a single badge representing the most significant status underneath.
 fn add_folder_rollups(decorations: &mut HashMap<String, GitDecoration>) {
     // Collect all leaf entries (files, not rollup folders) before mutating.
     let leaves: Vec<(String, GitDecoration)> = decorations
@@ -957,8 +955,8 @@ pub async fn get_repo_state(
         repo.unborn = true;
     }
 
-    // Merge / rebase / cherry-pick in progress — VSCode parity: these gate the
-    // commit action and decorate the branch label. The .git dir may live in a
+    // Merge, rebase, or cherry-pick in progress gates the commit action and decorates the branch label.
+    // The git directory may live in a submodule or worktree, so resolve it via git instead of assuming `cwd/.git`.
     // submodule / worktree, so resolve it via git instead of assuming `cwd/.git`.
     if let Ok(dir_out) = run_git_raw(&git, &["rev-parse", "--absolute-git-dir"], Some(&cwd), Some(&app)).await {
         if dir_out.status.success() {
@@ -1145,9 +1143,8 @@ pub async fn git_cancel_op(op_id: String, state: State<'_, GitState>) -> Result<
 #[tauri::command]
 pub async fn git_init(app: AppHandle, cwd: String, state: State<'_, GitState>) -> Result<(), String> {
     let git = state.git_command().ok_or("Git is not available")?;
-    // VSCode parity: initialize on the user's `init.defaultBranch`, falling
-    // back to "main". Uses `git init -b` when supported, otherwise a plain
-    // init followed by a HEAD symref move (unborn branch).
+    // Initialize on the user's configured default branch, falling back to main.
+    // Prefer `git init -b` when supported, otherwise initialize plainly and move HEAD.
     let default_branch = match run_git(&git, &["config", "--get", "init.defaultBranch"], &cwd, &state, Some(&app)).await {
         Ok(out) => out.trim().to_string(),
         Err(_) => String::new(),
@@ -1156,7 +1153,7 @@ pub async fn git_init(app: AppHandle, cwd: String, state: State<'_, GitState>) -
 
     match run_git(&git, &["init", "-b", &default_branch], &cwd, &state, Some(&app)).await {
         Ok(_) => Ok(()),
-        // git < 2.28 has no `init -b`: init plainly, then point HEAD at the
+        // Older git without `init -b`: initialize plainly, then point HEAD at the
         // default branch (safe because the repo is freshly created/unborn).
         Err(_) => {
             run_git(&git, &["init"], &cwd, &state, Some(&app)).await?;
@@ -1219,9 +1216,8 @@ pub async fn git_push(
     run_streaming(&git, &["push", "--progress"], &cwd, "push", &op_id, &progress, &state).await
 }
 
-/// VSCode "Publish Branch": publish the current branch to a remote and set it
-/// as upstream — `git push -u <remote> HEAD`. Picks "origin" when present,
-/// otherwise the first configured remote.
+/// Publish the current branch to a remote and set upstream.
+/// Runs `git push -u <remote> HEAD`, preferring `origin` when available.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn git_publish(
@@ -1233,7 +1229,7 @@ pub async fn git_publish(
     let git = state.git_command().ok_or("Git is not available")?;
     let remotes = run_git(&git, &["remote"], &cwd, &state, None).await.unwrap_or_default();
     let names: Vec<String> = remotes.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
-    // VSCode prioritizes "origin" and falls back to the first configured remote.
+    // Prefer origin and fall back to the first configured remote.
     let remote = names.iter().find(|r| *r == "origin").or_else(|| names.first());
     let Some(remote) = remote else {
         return Err("Your repository has no remotes configured to publish to.".to_string());

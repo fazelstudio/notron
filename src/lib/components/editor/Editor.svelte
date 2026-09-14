@@ -1,3 +1,9 @@
+<!--
+ * Editor
+ *
+ * CodeMirror 6 editor instance with theme, minimap, git gutter, and search support.
+-->
+
 <script lang="ts">
   import { onMount, onDestroy, mount, unmount, type Snippet } from 'svelte';
   import { Compartment, EditorState, type Extension } from '@codemirror/state';
@@ -11,8 +17,9 @@
   import { notronBreadcrumbsTheme, syncBreadcrumbBarIcons, ensureBreadcrumbObserver, disposeBreadcrumbObserver } from '../../editor/breadcrumbs';
   import { COMMON_EXTENSIONS, COMMON_EXTENSIONS_LARGE_FILE } from '../../editor/commonExtensions';
   import { searchResultHighlightExtensions, setSearchResultHighlight, clearSearchResultHighlight } from '../../editor/searchResultHighlight';
-  import { materialIconState } from '../../../../extensions/icon-theme-material/src/iconRenderer.svelte';
   import { settingsStore } from '../../stores/settings.svelte';
+  import { theming } from 'notron-sdk';
+  import { getIconProvider } from '../../icon-theme/registry';
   import HorizontalScrollbar from '../common/HorizontalScrollbar.svelte';
   import EditorSearchWidget from './EditorSearchWidget.svelte';
   import EditorFoldMarker from '../common/EditorFoldMarker.svelte';
@@ -27,7 +34,26 @@
   import { uiStore } from '../../stores/ui';
   import { themeStore } from '../../stores/theme';
   import { getGitFileContent, stageFile } from '../../services/git';
-  import { renderBreadcrumbPathIcon } from '../../../../extensions/icon-theme-material/src/breadcrumbPathIcons';
+
+  // Local breadcrumb icon renderer via SDK icon provider (decoupled from extension import).
+  function renderBreadcrumbPathIcon(entry: { name: string; isDir: boolean }, _expanded: boolean): string | null {
+    try {
+      const theme = settingsStore.effectiveSettings.icon_theme;
+      if (theme === 'off') return `<span style="display:none"></span>`;
+      const provider: any = getIconProvider(theme);
+      if (provider?.getFileIconSvg) {
+        const svg = entry.isDir
+          ? (provider.getFolderIconSvg?.(entry.name, 14, _expanded) ?? provider.getFileIconSvg?.(entry.name, 14) ?? '')
+          : (provider.getFileIconSvg?.(entry.name, 14) ?? '');
+        if (svg) {
+          const wrapper = 'width:14px;height:14px;display:inline-block;vertical-align:-2px;';
+          return `<span class="cm-breadcrumbs-icon" style="${wrapper}">${svg}</span>`;
+        }
+      }
+    } catch {}
+    if (entry.isDir) return null;
+    return null;
+  }
   import { LARGE_FILE_THRESHOLD_BYTES, SEARCH_RESULT_HIGHLIGHT_MS, MINIMAP_WIDTH, EDITOR_SCROLLBAR_WIDTH } from '../../constants';
   import { editorExtensionRegistry } from '../../editor/extensionRegistry';
   import { contextMenuRegistry } from '../../workbench/contextMenuRegistry';
@@ -35,7 +61,29 @@
   // Ensure editor extensions are registered via the central registry (modular)
   void editorExtensionRegistry;
 
-  let { tabId, content, filePath, children, topRightOverlay, hideContent = false, isHeaderOnly = false, readOnly = false }: { tabId: string; content: string; filePath: string; children?: Snippet; topRightOverlay?: Snippet; hideContent?: boolean; isHeaderOnly?: boolean; readOnly?: boolean } = $props();
+  let {
+    tabId,
+    content,
+    filePath,
+    children,
+    topRightOverlay,
+    hideContent = false,
+    isHeaderOnly = false,
+    readOnly = false,
+    headerSeparator = false,
+    loadingIndicator = true,
+  }: {
+    tabId: string;
+    content: string;
+    filePath: string;
+    children?: Snippet;
+    topRightOverlay?: Snippet;
+    hideContent?: boolean;
+    isHeaderOnly?: boolean;
+    readOnly?: boolean;
+    headerSeparator?: boolean;
+    loadingIndicator?: boolean;
+  } = $props();
 
   let currentTabId: string | null = null;
   const editorStates = new Map<string, EditorState>();
@@ -48,11 +96,13 @@
   let searchWidget = $state<ReturnType<typeof EditorSearchWidget> | null>(null);
   let searchMode = $state<'find' | 'replace'>('find');
   let pendingHighlightTimer: ReturnType<typeof setTimeout> | null = null;
+  let previewLoading = $state(false);
 
   const tabsStore = editorStore.tabs;
   let currentTab = $derived($tabsStore.find((t: any) => t.id === tabId));
   let tabStatus = $derived(currentTab?.status);
   let isLargeFile = $derived(currentTab?.isLargeFile || (content && content.length > LARGE_FILE_THRESHOLD_BYTES));
+  let showLoadingBar = $derived(loadingIndicator && Boolean(currentTab?.isLoading || previewLoading));
 
   const foldMarkers = new Set<{ app: any, marker: HTMLElement }>();
 
@@ -86,12 +136,8 @@
     }
   });
 
-  /**
-   * The git gutter peek view (from @fazelstudio/codemirror-gitgutter) renders
-   * its toolbar buttons with the native `title` attribute. This plugin replaces
-   * those native tooltips with the app's Tooltip component by wrapping each
-   * button once it appears in the DOM.
-   */
+  // The git gutter peek view renders toolbar buttons with the native title attribute.
+  // This plugin replaces those with the app's Tooltip component by wrapping each button.
   const peekTooltipPlugin = ViewPlugin.fromClass(
     class {
       private observer: MutationObserver;
@@ -161,7 +207,7 @@
   const overviewRulerCompartment = new Compartment();
   const readOnlyCompartment = new Compartment();
 
-  /** Builds the mini-map extensions, or an empty array when no mini-map is wanted. */
+  // Builds the minimap extensions, or an empty array when disabled.
   function minimapExtension(): Extension[] {
     return [
       showMinimap.compute([hunksField, baselineContentFacet], (state) => {
@@ -223,6 +269,7 @@
 
   const settings = settingsStore;
   const ui = uiStore;
+  let loadingBarTop = $derived(hideContent ? '28px' : ($ui.isBreadcrumbsEnabled ? '28px' : '0px'));
   let iconThemeClass = $derived(`icon-theme-${settings.effectiveSettings.icon_theme}`);
 
   async function loadLanguage() {
@@ -250,25 +297,13 @@
     );
   }
 
-  /**
-   * The breadcrumb panel (`.cm-panels.cm-panels-top`) is a sticky top panel with
-   * `z-index: 300`, while `@fazelstudio/codemirror-stickyscroll` pins its bar at
-   * `position:absolute; top:0; z-index:10` — so the sticky bar would render
-   * underneath (covered by) the breadcrumbs. Measure the panel and offset the
-   * sticky bar below it. The installed plugin never writes `top` again, so a
-   * one-time sync per mount/geometry/theme change is enough.
-   */
+  // The breadcrumb panel is a sticky top panel while stickyscroll pins its bar at absolute top.
+  // Measure the panel and offset the sticky bar below it; the plugin never rewrites top again.
   let minimapResizeObserver: ResizeObserver | null = null;
   let observedMinimapEl: HTMLElement | null = null;
 
-  /**
-   * The @replit/codemirror-minimap writes its own INLINE width (120px, scaled
-   * down proportionally once the editor gets narrower than ~6×120px), which
-   * overrides our CSS `width:150px`. So the sticky bar must be sized from the
-   * minimap's REAL measured left edge — a `MINIMAP_WIDTH`-based constant leaves
-   * a visible gap. Watch the minimap element so width changes (window resize
-   * crossing the scaling threshold) re-sync the sticky bar automatically.
-   */
+  // The minimap writes its own inline width, overriding CSS. Size the sticky bar from the real
+  // measured edge and watch for resize changes to resync automatically.
   function trackMinimapResizes(el: HTMLElement) {
     if (typeof ResizeObserver === 'undefined') return;
     if (observedMinimapEl === el) return;
@@ -472,14 +507,18 @@
 
     let state = editorStates.get(tabId);
     if (!state) {
-        const tabData = editorStore.getTabsSnapshot().find(t => t.id === tabId);
+        const tabsSnap = editorStore.getTabsSnapshot();
+        const tabData = tabsSnap.find(t => t.id === tabId)
+          ?? tabsSnap.find(t => t.path === filePath && t.language !== 'markdown-preview')
+          ?? tabsSnap.find(t => t.path === filePath);
         // Prefer a non-empty store buffer over a stale/empty prop — nested
         // markdown editors can mount with a briefly empty split-store copy.
+        const storeDoc = typeof tabData?.content === 'string' ? tabData.content : null;
         const initialDoc =
           (typeof content === 'string' && content.length > 0)
             ? content
-            : (typeof tabData?.content === 'string' && tabData.content.length > 0)
-              ? tabData.content
+            : (storeDoc && storeDoc.length > 0)
+              ? storeDoc
               : (content || '');
         if (tabData && tabData.undoHistory && !isLargeFile) {
           try {
@@ -496,6 +535,21 @@
           state = EditorState.create({ doc: initialDoc, extensions: extBase });
         }
         editorStates.set(tabId, state);
+    } else if (!isHeaderOnly && state.doc.length === 0) {
+        // Cached empty state from a prior mount-before-load — rebuild from store/prop.
+        const tabsSnap = editorStore.getTabsSnapshot();
+        const tabData = tabsSnap.find(t => t.id === tabId)
+          ?? tabsSnap.find(t => t.path === filePath);
+        const healDoc =
+          (typeof content === 'string' && content.length > 0)
+            ? content
+            : (typeof tabData?.content === 'string' && tabData.content.length > 0)
+              ? tabData.content
+              : '';
+        if (healDoc.length > 0) {
+          state = EditorState.create({ doc: healDoc, extensions: extBase });
+          editorStates.set(tabId, state);
+        }
     }
     
     editorView!.setState(state);
@@ -633,9 +687,22 @@
   });
 
   $effect(() => {
-    // Lightweight: when the light/dark icon variant flips, re-fill the bar's
-    // icons without reconfiguring the whole breadcrumbs plugin.
-    materialIconState.version;
+    // When the color theme flips (light/dark variant may change material icons),
+    // re-sync breadcrumb icons via SDK theming event — no direct extension import.
+    let cleanup: (() => void) | null = null;
+    try {
+      const disp = theming.onDidChangeActiveColorTheme(() => {
+        if (editorView) syncBreadcrumbBarIcons(editorView);
+      });
+      cleanup = () => disp.dispose();
+    } catch {}
+    return () => { try { cleanup?.(); } catch {} };
+  });
+
+  // Also re-sync when icon_theme setting changes (material vs default) — already
+  // covered by breadcrumbs compartment reconfigure, but sync again for safety.
+  $effect(() => {
+    void settingsStore.effectiveSettings.icon_theme;
     if (!editorView) return;
     syncBreadcrumbBarIcons(editorView);
   });
@@ -643,6 +710,21 @@
   async function loadGitBaseline() {
     // Skip git gutter for large files (performance)
     if (isLargeFile || !editorView || !$ui.explorerRoot) return;
+    // Empty doc + full HEAD baseline paints the whole file as "deleted". That
+    // happens when the code editor mounts before the buffer is hydrated
+    // (preview↔text toggle). Wait until we have text, then diff for real.
+    if (editorView.state.doc.length === 0) {
+      editorView.dispatch({
+        effects: gitGutterCompartment.reconfigure([
+          gitGutter({
+            baseline: '',
+            onStageHunk: () => {},
+          }),
+          keymap.of(gitGutterKeymap),
+        ])
+      });
+      return;
+    }
     const explorerRoot = $ui.explorerRoot;
 
     // git show HEAD:<path> requires a repo-relative path, not an absolute path.
@@ -654,6 +736,8 @@
       const baseline = await getGitFileContent(explorerRoot, relativePath, 'HEAD');
       // Check editorView again after async operation - component may have been destroyed
       if (!editorView) return;
+      // Content may have arrived while we awaited — if still empty, keep neutral.
+      if (editorView.state.doc.length === 0) return;
 
       if (baseline === null) {
         // File is not in HEAD: it's new, gitignored, or untracked.
@@ -693,9 +777,41 @@
 
   $effect(() => {
     tabStatus;
+    // Re-run when the buffer prop/store hydrates after an empty mount.
+    content;
+    currentTab?.content;
     if (editorView) {
       loadGitBaseline();
     }
+  });
+
+  // Heal an empty CodeMirror doc from the store/prop. Nested markdown editors
+  // can mount with "" while MarkdownPreview already shows the real buffer
+  // (lookup by path). Without this, text/split mode stays blank and the git
+  // gutter paints the whole file as deleted vs HEAD.
+  $effect(() => {
+    if (isHeaderOnly || !editorView) return;
+    const propContent = content;
+    const tabsSnap = $tabsStore;
+    const tabData =
+      tabsSnap.find((t: any) => t.id === tabId) ??
+      tabsSnap.find((t: any) => t.path === filePath && t.language !== 'markdown-preview') ??
+      tabsSnap.find((t: any) => t.path === filePath);
+    const desired =
+      typeof propContent === 'string' && propContent.length > 0
+        ? propContent
+        : typeof tabData?.content === 'string' && tabData.content.length > 0
+          ? tabData.content
+          : '';
+    if (!desired) return;
+    const doc = editorView.state.doc.toString();
+    if (doc === desired) return;
+    if (doc.length > 0) return; // Never clobber a non-empty buffer here
+    editorView.dispatch({
+      changes: { from: 0, to: editorView.state.doc.length, insert: desired },
+    });
+    if (currentTabId) editorStates.set(currentTabId, editorView.state);
+    loadGitBaseline();
   });
 
   async function handleGoToDefinition() {
@@ -878,11 +994,16 @@
     setupEditor();
     window.addEventListener('editor:action', handleAction);
     window.addEventListener('editor:append-chunk', handleAppendChunk);
+    const stopPreviewLoading = eventBus.on('editor:preview-loading', ({ path, loading }) => {
+      if (isHeaderOnly && path === filePath) previewLoading = loading;
+    });
     // Header-only shells share the same tabId as the nested code editor; if
     // they also listened for sync-content they could race and blank the buffer.
     if (!isHeaderOnly) {
       window.addEventListener('editor:sync-content', handleSyncContent);
     }
+
+    return stopPreviewLoading;
   });
 
   // Keep one CodeMirror view alive while the pane switches tabs. The tab's
@@ -895,14 +1016,9 @@
     }
   });
 
-  /**
- * content sync (disk watcher reload, file re-open). Applies a
-   * freshly-read file content to the LIVE CodeMirror buffer without tearing
-   * down the view. The event fires BEFORE the store update (see
-   * editorStore.setInitialContent) so we can compare against the pre-update
-   * baseline: if the buffer has diverged from it, the user is typing inside
-   * the extraction debounce window and we must NOT clobber their edits.
-   */
+  // Sync freshly read file content to the live CodeMirror buffer without tearing down the view.
+  // The event fires before the store update so we can compare against the baseline and avoid
+  // clobbering in-flight edits.
   function handleSyncContent(e: any) {
     if (!editorView || isHeaderOnly) return;
     const { tabId: tId, content: newContent } = e.detail ?? {};
@@ -995,7 +1111,10 @@
         // preview with a still-loading or briefly-empty CodeMirror instance.
         if (currentTabId) {
           const docContent = editorView.state.doc.toString();
-          const storeTab = editorStore.getTabsSnapshot().find(tb => tb.id === currentTabId);
+          const tabsSnap = editorStore.getTabsSnapshot();
+          const storeTab =
+            tabsSnap.find((tb) => tb.id === currentTabId) ??
+            tabsSnap.find((tb) => tb.path === filePath);
           const storeContent = storeTab?.content;
           const wouldWipe =
             docContent.length === 0 &&
@@ -1039,13 +1158,13 @@
   {#if tabStatus === 'deleted'}
     <div class="absolute top-0 left-0 right-0 text-xs px-3 py-2 text-center z-10 flex justify-center items-center gap-4" style="background-color: color-mix(in srgb, var(--color-error) 20%, transparent); color: var(--color-error);">
       <span>This file has been deleted from disk.</span>
-      <button class="px-3 py-1 rounded cursor-pointer" style="background-color: color-mix(in srgb, var(--color-error) 50%, transparent);" onclick={() => editorStore.closeTab(tabId)}>Close Tab</button>
+      <button class="nt-control" style="background-color: color-mix(in srgb, var(--color-error) 50%, transparent);" onclick={() => editorStore.closeTab(tabId)}>Close Tab</button>
     </div>
   {:else if tabStatus === 'conflict'}
     <div class="absolute top-0 left-0 right-0 text-xs px-3 py-2 text-center z-10 flex justify-center items-center gap-4" style="background-color: color-mix(in srgb, var(--color-warning) 20%, transparent); color: var(--color-warning);">
       <span>This file has been modified by another program. You have unsaved changes.</span>
-      <button class="px-3 py-1 rounded cursor-pointer" style="background-color: color-mix(in srgb, var(--color-warning) 50%, transparent);" onclick={() => editorStore.markSaved(tabId)}>Ignore</button>
-      <button class="bg-surface-3 hover:bg-surface-4 px-3 py-1 rounded cursor-pointer" onclick={() => {
+      <button class="nt-control" style="background-color: color-mix(in srgb, var(--color-warning) 50%, transparent);" onclick={() => editorStore.markSaved(tabId)}>Ignore</button>
+      <button class="nt-control bg-surface-3 hover:bg-surface-4" onclick={() => {
         if (!currentTab) return;
         import('../../platform/ipc').then(({ fileIpc }) => fileIpc.readText(currentTab.path).then((content) => {
           editorStore.setInitialContent(tabId, content as string);
@@ -1069,7 +1188,14 @@
       </div>
     {/if}
   </div>
-  <div bind:this={editorEl} class="{hideContent ? 'flex-none h-7' : 'h-full flex-1'} relative editor-container {tabStatus === 'deleted' || tabStatus === 'conflict' ? 'pt-8' : ''} {iconThemeClass} {hideContent ? 'hide-cm-content' : ''} {isHeaderOnly ? 'z-20' : 'z-10'}">
+  {#if showLoadingBar}
+    <div
+      class="editor-loading-bar"
+      style="top: {loadingBarTop};"
+      aria-hidden="true"
+    ></div>
+  {/if}
+  <div bind:this={editorEl} class="{hideContent ? 'flex-none h-7' : 'h-full flex-1'} relative editor-container {tabStatus === 'deleted' || tabStatus === 'conflict' ? 'pt-8' : ''} {iconThemeClass} {hideContent ? 'hide-cm-content' : ''} {headerSeparator ? 'header-separator' : ''} {isHeaderOnly ? 'z-20' : 'z-10'}">
   </div>
   
   {#if children}
@@ -1111,5 +1237,40 @@
   :global(.hide-cm-content .cm-panels-top) {
     display: block !important;
     height: 28px !important;
+  }
+  :global(.header-separator) {
+    border-bottom: 1px solid var(--nt-editor-border);
+  }
+
+  .editor-loading-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 30;
+    background: transparent;
+  }
+
+  .editor-loading-bar::after {
+    position: absolute;
+    top: 0;
+    right: -35%;
+    width: 35%;
+    height: 100%;
+    content: '';
+    background: var(--nt-focus-border);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--nt-focus-border) 65%, transparent);
+    animation: editor-loading-sweep 1.15s linear infinite;
+  }
+
+  @keyframes editor-loading-sweep {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-385%);
+    }
   }
 </style>

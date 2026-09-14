@@ -1,11 +1,16 @@
 /**
- * Vite.Config
+ * Vite Config
  *
- * Vite build configuration..
+ * Vite build configuration for the frontend and Tauri dev server.
  */
+// @ts-nocheck
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from '@tailwindcss/vite'
+// @ts-ignore - node types not in main tsconfig, allowed for vite config
+import path from 'node:path'
+// @ts-ignore
+import { fileURLToPath } from 'node:url'
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -15,8 +20,11 @@ export default defineConfig(async () => ({
 
   resolve: {
     preserveSymlinks: true,
-    // Force a single copy of CodeMirror core even for linked/local packages
+    // Force a single copy of CodeMirror core for linked and local packages.
     dedupe: ['@codemirror/state', '@codemirror/view', '@codemirror/language', '@lezer/common', '@lezer/highlight', '@lezer/html', '@lezer/lr'],
+    alias: {
+      'notron-sdk': path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'packages/notron-sdk/src'),
+    },
   },
 
   clearScreen: false,
@@ -35,8 +43,7 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-  // Pre-bundle heavy dependencies when the dev server starts, rather than upon the first browser request
-  // This eliminates the blank white screen and "Not Responding" issues in dev mode
+  // Pre-bundle heavy dependencies at dev server start to avoid blank screen on first request.
   optimizeDeps: {
     include: [
       '@codemirror/view',
@@ -128,16 +135,16 @@ export default defineConfig(async () => ({
       '@ndim/lezer-zig',
       'codemirror-lang-glsl'
     ],
-    // Exclude mermaid from the pre-bundle because it is lazy-loaded.
+    // Exclude Mermaid from pre-bundle because it is lazy-loaded.
     exclude: ['mermaid'],
   },
   build: {
     rollupOptions: {
       output: {
         manualChunks: {
-          // Split Mermaid into a separate chunk (lazy-loaded).
+          // Split Mermaid into a separate chunk for lazy loading.
           'mermaid': ['mermaid'],
-          // Split CodeMirror core into a separate chunk.
+          // Split CodeMirror core into a shared chunk.
           'codemirror': [
             '@codemirror/view',
             '@codemirror/state',

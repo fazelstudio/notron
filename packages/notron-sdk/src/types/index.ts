@@ -179,6 +179,7 @@ export interface ColorThemeContribution {
  label: string;
  uiTheme: 'light' | 'dark';
  path: string;
+ isHighContrast?: boolean;
 }
 
 export interface IconThemeContribution {
@@ -209,6 +210,7 @@ export interface ConfigurationProperty {
 
 export interface ConfigurationContribution {
  title: string;
+ category?: string;
  properties: Record<string, ConfigurationProperty>;
 }
 

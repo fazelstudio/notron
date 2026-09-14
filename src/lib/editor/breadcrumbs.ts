@@ -7,11 +7,27 @@ import { registerLanguageMapping } from '@fazelstudio/codemirror-breadcrumbs';
 
 
 import { EditorView } from '@codemirror/view';
-import { getMaterialIcon } from '../../../extensions/icon-theme-material/src/iconMap';
-import { FILE_ICONS, lucideSvg, FILE } from '../../../extensions/icon-theme-material/src/breadcrumbPathIcons';
-import { materialIconSvg } from '../../../extensions/icon-theme-material/src/iconRenderer.svelte';
 import { settingsStore } from '../stores/settings.svelte';
 import { getIconProvider } from '../icon-theme/registry';
+
+// Fallback lucide icons (copied from breadcrumbPathIcons to avoid direct extension import).
+type IconNode = readonly (readonly [tag: string, attrs: Record<string, string>])[];
+function svgAttrs(size: number): string {
+  return `xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
+}
+function lucideSvg(node: IconNode, size = 14): string {
+  const inner = node.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ')} />`).join('');
+  return `<svg ${svgAttrs(size)} class="cm-breadcrumbs-icon" aria-hidden="true">${inner}</svg>`;
+}
+const FILE: IconNode = [['path', { d: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z' }], ['path', { d: 'M14 2v4a2 2 0 0 0 2 2h4' }]];
+const FILE_CODE: IconNode = [['path', { d: 'M10 12.5 8 15l2 2.5' }], ['path', { d: 'm14 12.5 2 2.5-2 2.5' }], ['path', { d: 'M14 2v4a2 2 0 0 0 2 2h4' }], ['path', { d: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z' }]];
+const FILE_JSON: IconNode = [['path', { d: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z' }], ['path', { d: 'M14 2v4a2 2 0 0 0 2 2h4' }], ['path', { d: 'M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1' }], ['path', { d: 'M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1' }]];
+const FILE_TEXT: IconNode = [['path', { d: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z' }], ['path', { d: 'M14 2v4a2 2 0 0 0 2 2h4' }], ['path', { d: 'M10 9H8' }], ['path', { d: 'M16 13H8' }], ['path', { d: 'M16 17H8' }]];
+const IMAGE: IconNode = [['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2', ry: '2' }], ['circle', { cx: '9', cy: '9', r: '2' }], ['path', { d: 'm21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21' }]];
+const SETTINGS: IconNode = [['path', { d: 'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z' }], ['circle', { cx: '12', cy: '12', r: '3' }]];
+const GLOBE: IconNode = [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20' }], ['path', { d: 'M2 12h20' }]];
+const HASH: IconNode = [['line', { x1: '4', x2: '20', y1: '9', y2: '9' }], ['line', { x1: '4', x2: '20', y1: '15', y2: '15' }], ['line', { x1: '10', x2: '8', y1: '3', y2: '21' }], ['line', { x1: '16', x2: '14', y1: '3', y2: '21' }]];
+const FILE_ICONS: Record<string, IconNode> = { ts: FILE_CODE, tsx: FILE_CODE, js: FILE_CODE, jsx: FILE_CODE, rs: FILE_CODE, py: FILE_CODE, go: FILE_CODE, html: GLOBE, css: HASH, json: FILE_JSON, md: FILE_TEXT, svg: IMAGE, png: IMAGE, jpg: IMAGE, jpeg: IMAGE, webp: IMAGE, gif: IMAGE, toml: SETTINGS, yaml: SETTINGS, yml: SETTINGS };
 
 /**
  * Puts the configured icon theme onto the breadcrumb top-bar segments.
@@ -52,16 +68,17 @@ export function syncBreadcrumbBarIcons(view: EditorView) {
       return;
     }
 
-    const provider = getIconProvider(iconTheme);
-    const isMaterial = provider?.isMaterial === true;
-    if (isMaterial) {
-      const iconName = getMaterialIcon(label);
-      if (existing?.getAttribute('data-notron-icon') === `material:${iconName}`) return;
+    const provider: any = getIconProvider(iconTheme);
+    const hasSvg = typeof provider?.getFileIconSvg === 'function';
+    if (hasSvg) {
+      const svg: string | undefined = provider?.getFileIconSvg?.(label, 14) as string | undefined;
+      const iconName: string = (provider?.getFileIcon?.(label) as string | undefined) ?? label;
+      if (existing?.getAttribute('data-notron-icon') === `svg:${iconName}`) return;
       existing?.remove();
       const iconEl = document.createElement('span');
       iconEl.className = 'cm-breadcrumbs-icon';
-      iconEl.setAttribute('data-notron-icon', `material:${iconName}`);
-      iconEl.innerHTML = materialIconSvg(iconName, 14);
+      iconEl.setAttribute('data-notron-icon', `svg:${iconName}`);
+      iconEl.innerHTML = svg ?? '';
       seg.insertBefore(iconEl, labelEl || null);
     } else {
       const ext = label.split('.').pop()?.toLowerCase();

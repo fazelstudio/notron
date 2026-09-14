@@ -1,7 +1,18 @@
+<!--
+ * Tooltip
+ *
+ * Positioned tooltip with hover delay and follow-cursor support.
+-->
+
+<script module lang="ts">
+  let activeTooltipHide: (() => void) | null = null;
+</script>
+
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { TOOLTIP_CURSOR_GAP_PX, TOOLTIP_VIEWPORT_GAP_PX } from '../../constants';
 
-  let { content = '', customContent, side = 'top', wrapperClass = '', followCursor = false, hoverDelay = 0, disabled = false, unstyled = false, pointerEvents = false, children }: { content?: string; customContent?: import('svelte').Snippet; side?: 'top' | 'bottom' | 'left' | 'right'; wrapperClass?: string; followCursor?: boolean; hoverDelay?: number; disabled?: boolean; unstyled?: boolean; pointerEvents?: boolean; children: import('svelte').Snippet } = $props();
+  let { content = '', customContent, side = 'top', wrapperClass = '', followCursor = false, hoverDelay = 0, disabled = false, unstyled = false, pointerEvents = false, compact = false, fontClass = 'text-[length:var(--nt-chrome-font-tip)]', children }: { content?: string; customContent?: import('svelte').Snippet; side?: 'top' | 'bottom' | 'left' | 'right'; wrapperClass?: string; followCursor?: boolean; hoverDelay?: number; disabled?: boolean; unstyled?: boolean; pointerEvents?: boolean; compact?: boolean; fontClass?: string; children: import('svelte').Snippet } = $props();
   let visible = $state(false);
   let coords = $state({ x: 0, y: 0 });
   let tooltipElement = $state<HTMLDivElement>();
@@ -14,23 +25,14 @@
   let anchorEl = $state<HTMLDivElement>();
   let anchorObserver: MutationObserver | undefined;
 
-  const CURSOR_GAP = 6;
-  const VIEWPORT_GAP = 6;
+  const CURSOR_GAP = TOOLTIP_CURSOR_GAP_PX;
+  const VIEWPORT_GAP = TOOLTIP_VIEWPORT_GAP_PX;
 
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
 
-    // A popover is rendered in the browser's top layer, above the editor and
-    // every stacking context. Older webviews still get the z-index fallback.
-    if (typeof node.showPopover === 'function') {
-      node.showPopover();
-    }
-
     return {
       destroy() {
-        if (typeof node.hidePopover === 'function' && node.matches(':popover-open')) {
-          node.hidePopover();
-        }
         if (node.parentNode) {
           node.parentNode.removeChild(node);
         }
@@ -39,6 +41,8 @@
   }
   
   function handleMouseEnter(e: MouseEvent) {
+    activeTooltipHide?.();
+    window.dispatchEvent(new CustomEvent('notron:hide-tooltips'));
     cancelled = false;
     pointer = { x: e.clientX, y: e.clientY };
 
@@ -154,11 +158,6 @@
   }
 
   function hide() {
-    // Remove the native popover from the top layer immediately. Waiting for
-    // Svelte's next render makes a context-menu interaction feel delayed.
-    if (tooltipElement && typeof tooltipElement.hidePopover === 'function' && tooltipElement.matches(':popover-open')) {
-      tooltipElement.hidePopover();
-    }
     visible = false;
     if (showTimer !== undefined) {
       clearTimeout(showTimer);
@@ -168,6 +167,7 @@
       cancelAnimationFrame(positionFrame);
       positionFrame = undefined;
     }
+    if (activeTooltipHide === hide) activeTooltipHide = null;
   }
 
   $effect(() => {
@@ -189,11 +189,13 @@
   });
 
   onMount(() => {
+    activeTooltipHide = hide;
     const forceHide = () => hide();
     const forceCancel = () => { cancelled = true; hide(); };
     window.addEventListener('notron:hide-tooltips', forceHide);
     window.addEventListener('notron:cancel-tooltips', forceCancel);
     return () => {
+      if (activeTooltipHide === hide) activeTooltipHide = null;
       window.removeEventListener('notron:hide-tooltips', forceHide);
       window.removeEventListener('notron:cancel-tooltips', forceCancel);
     };
@@ -219,7 +221,7 @@
     if (unstyled) {
       // Just positioning classes
     } else {
-      classes.push('px-2', 'py-1', 'text-[10px]', 'rounded', 'shadow-elevated', 'bg-elevated', 'border', 'border-subtle', 'text-primary');
+      classes.push(compact ? 'px-1 py-0.5' : 'px-1.5 py-0.5', fontClass, 'leading-tight', 'rounded-[2px]', 'shadow-elevated', 'bg-elevated', 'border', 'border-subtle', 'text-primary', 'w-fit', 'min-w-0', 'max-w-none');
     }
     
     if (!pointerEvents) {
@@ -239,6 +241,15 @@
     }
     return classes.join(' ');
   });
+
+  // Small diamond pointer on the anchor side of the tooltip. Only anchored
+  // tooltips get one — cursor-following tooltips have no stable direction.
+  let arrowClass = $derived.by(() => {
+    if (side === 'right') return '-left-[3px] top-1/2 -translate-y-1/2 border-l border-b';
+    if (side === 'left') return '-right-[3px] top-1/2 -translate-y-1/2 border-t border-r';
+    if (side === 'bottom') return '-top-[3px] left-1/2 -translate-x-1/2 border-t border-l';
+    return '-bottom-[3px] left-1/2 -translate-x-1/2 border-b border-r';
+  });
 </script>
 
 <div
@@ -255,7 +266,6 @@
     <div
       bind:this={tooltipElement}
       use:portal
-      popover="manual"
       role="tooltip"
       class={positionClass}
       style="inset: auto; left: {coords.x}px; top: {coords.y}px; position: fixed; margin: 0; z-index: 2147483647; opacity: {measured ? 1 : 0};"
@@ -273,6 +283,9 @@
         {@render customContent()}
       {:else}
         {content}
+      {/if}
+      {#if !followCursor && !unstyled}
+        <div aria-hidden="true" class="absolute w-1.5 h-1.5 rotate-45 bg-elevated border-subtle pointer-events-none {arrowClass}"></div>
       {/if}
     </div>
   {/if}

@@ -1,9 +1,9 @@
 /**
- * BreadcrumbPathIcons
+ * Breadcrumb Path Icons
  *
- * Extension module..
+ * Renders breadcrumb icons for the editor breadcrumb bar.
  */
-import { settingsStore } from '../../../src/lib/stores/settings.svelte';
+import { workspace } from 'notron-sdk';
 import { materialFileIconSvg, materialFolderIconSvg } from './iconRenderer.svelte';
 
 /**
@@ -100,7 +100,12 @@ export function renderBreadcrumbPathIcon(
   entry: { name: string; isDir: boolean },
   _expanded: boolean,
 ): string | null {
-  const iconTheme = settingsStore.effectiveSettings.icon_theme;
+  let iconTheme = 'default';
+  try {
+    const cfg = workspace.getConfiguration();
+    const v = cfg.get<string>('icon_theme');
+    if (typeof v === 'string') iconTheme = v;
+  } catch {}
   
   if (iconTheme === 'off') return `<span style="display:none"></span>`;
 

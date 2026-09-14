@@ -18,8 +18,8 @@ export function escapeRegExp(s: string): string {
 
 /**
  * Build a RegExp mirroring the Rust backend (`search.rs`):
- *  * literal queries are escaped, regex queries pass through,
- *  * whole-word wraps the in `\b(?:...)\b`,
+ *  * literal queries are escaped and regex queries pass through,
+ *  * whole-word wraps the pattern in `\b(?:...)\b`,
  *  * case sensitivity maps to the `i` flag.
  */
 export function buildReplaceRegex(query: string, opts: { caseSensitive: boolean; useRegex: boolean; wholeWord: boolean }): RegExp {

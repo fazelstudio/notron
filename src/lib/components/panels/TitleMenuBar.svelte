@@ -1,3 +1,9 @@
+<!--
+ * Title Menu Bar
+ *
+ * Application menu bar for the title bar.
+-->
+
 <script lang="ts">
   import { editorStore } from '../../stores/editor';
   import { splitStore } from '../../stores/split';
@@ -234,7 +240,7 @@
   {#each displayMenus as menu (menu.label)}
     <div class="relative">
       <button
-        class="px-2 py-1 rounded outline-none cursor-pointer select-none transition-colors hover:bg-hover hover:text-primary"
+        class="px-2 py-1 rounded outline-none select-none hover:bg-hover hover:text-primary"
         class:bg-selected={openMenu === menu.label}
         class:text-primary={openMenu === menu.label}
         onclick={(e) => { e.stopPropagation(); toggleMenu(menu.label); }}
@@ -246,13 +252,13 @@
         <div
           role="menu"
           tabindex="0"
-          class="absolute top-full left-0 min-w-[240px] rounded border shadow-elevated z-[100] py-1 bg-elevated border-subtle text-primary"
+          class="absolute top-full left-0 min-w-[240px] z-[100] nt-menu-panel"
           onclick={(e) => { e.stopPropagation(); closeAll(); }}
           onkeydown={(e) => { if (e.key === 'Escape') closeAll(); }}
         >
           {#each menu.items as item}
               <button
-                class="flex items-center justify-between w-full px-3 py-1.5 text-xs outline-none cursor-pointer select-none {!(item as any).disabled?.() ? 'hover:bg-selected focus:bg-selected text-secondary hover:text-primary transition-colors' : 'text-muted'}"
+                class="nt-menu-item justify-between {!(item as any).disabled?.() ? 'hover:bg-selected focus:bg-selected text-secondary hover:text-primary' : 'text-muted'}"
                 disabled={(item as any).disabled?.()}
                 onclick={() => {
                   if ((item as any).disabled?.()) return;
@@ -264,16 +270,16 @@
               >
                 <div class="flex items-center">
                   <div class="w-4 mr-2 flex justify-center items-center">
-                    {#if (item as any).checked?.()}<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>{/if}
+                    {#if (item as any).checked?.()}<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>{/if}
                   </div>
                   {(item as any).label}
                 </div>
                 {#if (item as any).shortcut}
-                  <span class="ml-4 text-[10px] text-muted opacity-80">{(item as any).shortcut}</span>
+                  <span class="ml-4 text-[length:var(--nt-chrome-font-tip)] text-muted opacity-80">{(item as any).shortcut}</span>
                 {/if}
               </button>
             {#if (item as any).sep}
-              <div class="h-px my-1 bg-subtle"></div>
+              <div class="nt-menu-separator"></div>
             {/if}
           {/each}
         </div>

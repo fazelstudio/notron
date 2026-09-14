@@ -51,7 +51,7 @@ Rilis awal `notron-sdk` (Fase 0–6) — permukaan API lengkap 14 namespace (nya
 | `authentication.getSession` | **Stub sangat rendah** | Core tanpa auth/OAuth service |
 | CLI templates `webview-view`/`language-support`/`custom-editor` | **Stub folder** | Placeholder valid minimal, gap sama (webview/language provider) |
 | `signature` (code signing) | **Placeholder** | Field `signature?: string` tidak diimplementasikan, rekomendasi `minisign`/`cosign` lanjutan |
-| `install-local` loader | **Dev only** | Ekstrak `.ntrn` ke `~/.notron/extensions-dev`, tapi core belum punya loader `.ntrn`/`watcher` (gap prioritas tinggi) |
+| `install-local` loader | **Dev only** | Ekstrak `.ntrn` ke `~/.notron/extensions-dev`; runtime desktop memakai installer dan loader `.ntrn` milik core |
 
 ### Diuji
 

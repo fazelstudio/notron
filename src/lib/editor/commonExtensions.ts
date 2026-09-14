@@ -111,7 +111,7 @@ export const COMMON_EXTENSIONS: Extension[] = [
 
 /**
  * Extension set used when a file is too large for the full feature set.
- * Currently identical to COMMON_EXTENSIONS; later the heavy extensions
- * (autocompletion, selection highlighting, ...) should be dropped here.
+ * Currently identical to COMMON_EXTENSIONS; heavy extensions such as
+ * autocompletion and selection highlighting should be excluded here later.
  */
 export const COMMON_EXTENSIONS_LARGE_FILE = COMMON_EXTENSIONS;

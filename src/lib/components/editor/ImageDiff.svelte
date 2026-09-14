@@ -1,8 +1,14 @@
+<!--
+ * Image Diff
+ *
+ * Side-by-side image comparison for git revisions.
+-->
+
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { getGitFileBinary } from '../../services/git';
   import { dirname } from '@tauri-apps/api/path';
-  
+
   let { filePath, originalLabel, currentLabel, originalRevision, currentRevision }: {
     filePath: string;
     originalLabel?: string;

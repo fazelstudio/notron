@@ -116,7 +116,7 @@
 </script>
 
 <div
-  class="flex flex-col border-t transition-all z-40 relative bg-[var(--nt-panel-bg)] border-[var(--nt-panel-border)]"
+  class="flex flex-col border-t z-40 relative bg-[var(--nt-panel-bg)] border-[var(--nt-panel-border)]"
   class:hidden={!$termStore.isVisible}
   class:flex-1={$termStore.isMaximized}
   style="{$termStore.isMaximized ? '' : `height: ${$termStore.height}px`};"
@@ -124,7 +124,7 @@
     {#if !$termStore.isMaximized}
       <div 
         role="presentation"
-        class="absolute top-0 left-0 right-0 h-1 -mt-0.5 cursor-ns-resize hover:bg-indicator-active z-50 transition-colors"
+        class="absolute top-0 left-0 right-0 h-1 -mt-0.5 cursor-ns-resize hover:bg-indicator-active z-50"
     onmousedown={(e) => {
       e.preventDefault();
       const startY = e.clientY;
@@ -145,18 +145,18 @@
       ></div>
     {/if}
 
-  <div class="flex items-center justify-between h-9 px-4 border-b shrink-0 select-none bg-[var(--nt-panel-bg)] border-[var(--nt-panel-border)]">
-      <div class="flex items-center gap-4 h-full">
+  <div class="flex items-center justify-between h-8 px-3 border-b shrink-0 select-none bg-[var(--nt-panel-bg)] border-[var(--nt-panel-border)]">
+      <div class="flex items-center gap-3 h-full">
       {#each visiblePanels as item (item.id)}
         <button 
-          class="h-full text-xs font-semibold uppercase tracking-widest flex items-center border-b-2 transition-colors { $termStore.activePanel === item.id ? 'text-primary border-accent' : 'text-secondary border-transparent hover:text-primary' }"
+          class="h-full text-[length:var(--nt-chrome-font-sm)] font-semibold uppercase tracking-widest flex items-center border-b-2 { $termStore.activePanel === item.id ? 'text-primary border-accent' : 'text-secondary border-transparent hover:text-primary' }"
           onclick={() => handleTabClick(item.id)}
         >
           {item.label}
           {#if item.badge}
             {@const badge = item.badge()}
             {#if badge}
-              <span class="ml-1.5 flex items-center justify-center rounded-full bg-panel border border-subtle w-4 h-4 text-[10px]">{badge}</span>
+              <span class="ml-1 flex items-center justify-center rounded-full bg-panel border border-subtle w-4 h-4 text-[length:var(--nt-chrome-font-tip)]">{badge}</span>
             {/if}
           {/if}
         </button>
@@ -169,7 +169,7 @@
             <button 
               aria-label="New Terminal" 
               onclick={() => isDropdownOpen = !isDropdownOpen} 
-              class="p-1 rounded hover:bg-hover hover:text-icon-active transition-colors flex items-center gap-0.5"
+              class="p-1 rounded hover:bg-hover hover:text-icon-active flex items-center gap-0.5"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -185,11 +185,11 @@
               onkeydown={(e) => { if (e.key === 'Escape') isDropdownOpen = false; }}
             ></div>
             <div 
-              class="absolute top-full right-0 mt-1 min-w-[160px] rounded-md border p-1 shadow-elevated z-[100] animate-in fade-in duration-100 bg-panel border-subtle text-primary flex flex-col"
+              class="absolute top-full right-0 mt-1 min-w-[160px] z-[100] nt-menu-panel flex flex-col"
             >
               {#each getPlatformShells() as shellType (shellType)}
                 <button
-                  class="flex items-center justify-between w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors hover:bg-selected focus:bg-selected hover:text-primary focus:text-primary text-secondary"
+                  class="nt-menu-item justify-between text-secondary hover:bg-selected hover:text-primary focus:bg-selected focus:text-primary"
                   onclick={() => createTerminal(shellType)}
                 >
                   <span>{SHELL_DISPLAY_NAMES[shellType]}</span>
@@ -202,7 +202,7 @@
           <button 
             aria-label="Delete Active Terminal" 
             onclick={() => commandRegistry.execute('workbench.action.terminal.killActive')} 
-            class="p-1 rounded hover:bg-hover hover:text-error transition-colors"
+            class="p-1 rounded hover:bg-hover hover:text-error"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/></svg>
           </button>        </Tooltip>
@@ -211,11 +211,11 @@
           
           {#if $termStore.activePanel === 'output'}
         <div class="relative flex items-center h-full mr-2">
-          <input type="text" placeholder="Filter" class="bg-panel border border-subtle text-[11px] pl-6 pr-2 py-0.5 rounded w-40 text-primary outline-none placeholder-muted" bind:value={outputSearch} />
+          <input type="text" placeholder="Filter" class="bg-panel border border-subtle text-[length:var(--nt-chrome-font-sm)] pl-6 pr-2 py-0.5 rounded-[2px] w-40 text-primary outline-none placeholder-muted" bind:value={outputSearch} />
           <svg class="absolute left-1.5 top-1.5 w-3 h-3 text-muted" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </div>
         {#snippet categoryTrigger()}
-          <button class="flex items-center gap-1 px-1.5 py-0.5 hover:bg-hover rounded text-[11px] text-secondary hover:text-primary transition-colors h-full">
+          <button class="flex items-center gap-1 px-1.5 py-0.5 hover:bg-hover rounded text-[length:var(--nt-chrome-font-sm)] text-secondary hover:text-primary h-full">
             {outputCategory}
             <svg class="w-3 h-3 opacity-70" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
@@ -228,7 +228,7 @@
           <button 
             aria-label="Clear Output" 
             onclick={() => commandRegistry.execute('workbench.action.terminal.clear')} 
-            class="p-1 rounded hover:bg-hover hover:text-icon-active transition-colors"
+            class="p-1 rounded hover:bg-hover hover:text-icon-active"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
           </button>
@@ -239,7 +239,7 @@
           <button 
             aria-label="Maximize Terminal" 
             onclick={() => commandRegistry.execute('workbench.action.terminal.maximize')} 
-            class="p-1 rounded hover:bg-hover hover:text-icon-active transition-colors"
+            class="p-1 rounded hover:bg-hover hover:text-icon-active"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               {#if $termStore.isMaximized}
@@ -255,7 +255,7 @@
           <button 
             aria-label="Close Terminal Panel" 
             onclick={() => commandRegistry.execute('workbench.action.terminal.hide')} 
-            class="p-1 rounded hover:bg-hover hover:text-icon-active transition-colors"
+            class="p-1 rounded hover:bg-hover hover:text-icon-active"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -273,12 +273,12 @@
         {#if $termStore.terminals.length === 0}
           <div class="absolute inset-0 flex flex-col items-center justify-center text-muted gap-4">
             <span class="text-sm">No Active Terminals</span>
-            <button class="px-4 py-2 bg-accent text-on-accent rounded-md hover:brightness-110 transition-all text-xs" onclick={() => commandRegistry.execute('workbench.action.terminal.new')}>New Terminal</button>
+            <button class="nt-control bg-accent text-on-accent hover:bg-accent-hover text-xs" onclick={() => commandRegistry.execute('workbench.action.terminal.new')}>New Terminal</button>
           </div>
         {/if}
         {#each $termStore.terminals as term (term.id)}
           <div 
-            class="absolute inset-0 transition-opacity" 
+            class="absolute inset-0" 
             class:opacity-100={$termStore.activeTerminalId === term.id} 
             class:opacity-0={$termStore.activeTerminalId !== term.id} 
             class:pointer-events-none={$termStore.activeTerminalId !== term.id}
@@ -295,7 +295,7 @@
         <div class="w-48 border-l border-subtle bg-panel flex flex-col overflow-y-auto shrink-0">
           {#each $termStore.terminals as term (term.id)}
             <button 
-              class="px-3 py-2 text-xs text-left truncate transition-colors flex items-center justify-between group"
+              class="nt-menu-item text-left truncate group"
               class:bg-selected={$termStore.activeTerminalId === term.id}
               class:text-primary={$termStore.activeTerminalId === term.id}
               class:text-secondary={$termStore.activeTerminalId !== term.id}
@@ -306,7 +306,7 @@
               <div 
                 role="button"
                 tabindex="0"
-                class="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-error hover:text-on-accent transition-all text-icon-default"
+                class="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-error hover:text-on-accent text-icon-default"
                 onclick={(e) => { e.stopPropagation(); terminalStore.closeTerminal(term.id); }}
                 onkeydown={(e) => { if (e.key === 'Enter') terminalStore.closeTerminal(term.id); }}
               >

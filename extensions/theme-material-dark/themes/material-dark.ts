@@ -1,2 +1,7 @@
-// placeholder for material-dark
+/**
+ * Material Dark Theme
+ *
+ * Theme definition placeholder for material-dark.
+ */
+
 export {};

@@ -1,6 +1,7 @@
-// Watcher Service
-//
-// Rust module.
+//! Watcher Service
+//! 
+//! Unified file system watcher for explorer and git updates.
+
 use notify::{Event, EventKind, RecursiveMode, RecommendedWatcher, Watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

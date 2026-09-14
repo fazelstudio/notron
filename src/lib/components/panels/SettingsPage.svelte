@@ -1,3 +1,9 @@
+<!--
+ * Settings Page
+ *
+ * Application settings with global and workspace scopes.
+-->
+
 <script lang="ts">
   import Modal from '../common/Modal.svelte';
   import Select from '../common/Select.svelte';
@@ -12,11 +18,8 @@
   } from 'lucide-svelte';
   import { settingsRegistry } from '../../workbench/settingsRegistry';
   import { settingsStore } from '../../stores/settings.svelte';
-  import { themeStore } from '../../stores/theme';
   import { uiStore } from '../../stores/ui';
   import { terminalStore } from '../../stores/terminal';
-  import { __getContributedIconThemes } from '../../../../packages/notron-sdk/src/api/theming';
-  import { getThemeOptions } from '../../theme/registry';
   import {
     MIN_SIDEBAR_WIDTH,
     MAX_SIDEBAR_WIDTH,
@@ -39,10 +42,6 @@
   function handleSave(key: string, value: any) {
     // Update store immediately (synchronous) so UI reacts instantly
     settingsStore.updateSetting(key as any, value);
-    // Apply theme directly - bypass the $effect chain in App.svelte
-    if (key === 'theme') {
-      themeStore.setTheme(value as string);
-    }
   }
 
   // Terminal height slider max tracks the current viewport, mirroring the
@@ -125,19 +124,6 @@
       icon: Palette,
       rows: [
         {
-          id: 'theme',
-          type: 'select',
-          key: 'theme',
-          label: 'Theme',
-          description: 'Controls the overall color scheme of the application.',
-          options: (() => {
-            const opts = getThemeOptions().map(t => ({ value: t.id, label: t.label }));
-            return [{ value: 'system', label: 'System Default' }, ...opts];
-          })(),
-          get: () => settingsStore.effectiveSettings.theme,
-          set: (v) => handleSave('theme', v),
-        },
-        {
           id: 'fontFamily',
           type: 'text',
           key: 'font_family',
@@ -159,25 +145,6 @@
           get: () => settingsStore.effectiveSettings.font_size,
           set: (v) => handleSave('font_size', v),
           format: (v) => `${v}px`,
-        },
-        {
-          id: 'iconTheme',
-          type: 'select',
-          key: 'icon_theme',
-          label: 'Icon Theme',
-          description: 'File icons displayed in the explorer sidebar.',
-          options: (() => {
-            const contributed = __getContributedIconThemes();
-            const all = [{ id: 'off', label: 'None' }, { id: 'default', label: 'Default (Lucide)' }, ...contributed.map(c => ({ id: c.id, label: c.label }))];
-            const seen = new Set<string>();
-            return all.filter(o => {
-              if (seen.has(o.id)) return false;
-              seen.add(o.id);
-              return true;
-            }).map(o => ({ value: o.id, label: o.label }));
-          })(),
-          get: () => settingsStore.effectiveSettings.icon_theme || 'default',
-          set: (v) => handleSave('icon_theme', v),
         },
       ],
     },
@@ -410,7 +377,7 @@
         min: schema.min,
         max: schema.max,
         step: schema.step,
-        get: () => (settingsStore.effectiveSettings as Record<string, any>)[schema.key],
+        get: () => (settingsStore.effectiveSettings as Record<string, any>)[schema.key] ?? schema.default,
         set: (v) => handleSave(schema.key, v),
         visible: schema.when,
       }));
@@ -461,7 +428,7 @@
         aria-label={`Reset ${key} to user settings`}
         title="Reset to user (global) settings"
         onclick={() => settingsStore.resetToGlobal(key as any)}
-        class="hover:text-primary transition-colors"
+        class="hover:text-primary"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
       </button>
@@ -470,9 +437,9 @@
 {/snippet}
 
 {#snippet rowLabel(p: RowDef)}
-  <label for={p.id} class="font-medium text-primary text-sm block">{p.label}</label>
+  <label for={p.id} class="font-medium text-primary text-xs block">{p.label}</label>
   {#if p.description}
-    <p class="text-xs text-muted mt-0.5 leading-relaxed max-w-lg">{p.description}</p>
+    <p class="text-xs text-muted mt-0.5 leading-snug max-w-lg">{p.description}</p>
   {/if}
   {#if p.key}
     {@render scopeBadge(p.key)}
@@ -480,7 +447,7 @@
 {/snippet}
 
 {#snippet toggleRow(p: RowDef)}
-  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-3">
+  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-2">
     <div class="min-w-0 flex-1">
       {@render rowLabel(p)}
     </div>
@@ -490,15 +457,15 @@
       aria-label={`Toggle ${p.label}`}
       aria-checked={p.get()}
       onclick={() => p.set(!p.get())}
-      class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {p.get() ? 'bg-accent' : 'bg-elevated border border-subtle'}"
+      class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full {p.get() ? 'bg-accent' : 'bg-elevated border border-subtle'}"
     >
-      <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-editor shadow transition-transform {p.get() ? 'translate-x-4' : 'translate-x-0.5'}"></span>
+      <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-editor shadow {p.get() ? 'translate-x-4' : 'translate-x-0.5'}"></span>
     </button>
   </div>
 {/snippet}
 
 {#snippet selectRow(p: RowDef)}
-  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-3">
+  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-2">
     <div class="min-w-0 flex-1">
       {@render rowLabel(p)}
     </div>
@@ -513,7 +480,7 @@
 {/snippet}
 
 {#snippet rangeRow(p: RowDef)}
-  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-3">
+  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-2">
     <div class="min-w-0 flex-1">
       {@render rowLabel(p)}
     </div>
@@ -534,7 +501,7 @@
 {/snippet}
 
 {#snippet textRow(p: RowDef)}
-  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-3">
+  <div id={`setting-${p.id}`} class="flex items-center justify-between gap-6 py-2">
     <div class="min-w-0 flex-1">
       {@render rowLabel(p)}
     </div>
@@ -542,7 +509,7 @@
       id={p.id}
       type="text"
       placeholder={p.placeholder}
-      class="rounded p-1.5 text-sm outline-none w-56 shrink-0 border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
+      class="rounded-[2px] px-2 h-[var(--nt-control-height)] text-xs outline-none w-56 shrink-0 border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
       value={p.get()}
       oninput={(e) => p.set((e.target as HTMLInputElement).value)}
     />
@@ -550,14 +517,14 @@
 {/snippet}
 
 {#snippet listRow(p: RowDef)}
-  <div id={`setting-${p.id}`} class="py-3">
+  <div id={`setting-${p.id}`} class="py-2">
     {@render rowLabel(p)}
-    <div class="flex gap-2 mt-2.5">
+    <div class="flex gap-1.5 mt-2">
       <input
         id={p.id}
         type="text"
         placeholder={p.placeholder}
-        class="flex-1 rounded p-1.5 text-sm outline-none border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
+        class="flex-1 rounded-[2px] px-2 h-[var(--nt-control-height)] text-xs outline-none border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
         onkeydown={(e) => {
           if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
             p.set((e.target as HTMLInputElement).value.trim());
@@ -573,17 +540,17 @@
             input.value = '';
           }
         }}
-        class="px-3 py-1.5 text-sm rounded border border-subtle bg-elevated text-primary hover:bg-hover transition-colors"
+        class="nt-control border border-subtle bg-elevated text-primary hover:bg-hover"
       >Add</button>
     </div>
-    <div class="mt-2.5 flex flex-wrap gap-1.5">
+    <div class="mt-2 flex flex-wrap gap-1">
       {#each p.get() as pattern (pattern)}
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-subtle bg-elevated text-secondary">
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-[2px] border border-subtle bg-elevated text-secondary">
           {pattern}
           <button
             aria-label={`Remove ${pattern}`}
             onclick={() => p.remove?.(pattern)}
-            class="text-muted hover:text-primary transition-colors"
+            class="text-muted hover:text-primary"
           >×</button>
         </span>
       {/each}
@@ -601,24 +568,24 @@
   {#snippet children()}
     <div class="flex h-full overflow-hidden">
       <!-- Sidebar -->
-      <aside class="w-44 lg:w-52 xl:w-56 shrink-0 border-r border-subtle flex flex-col py-2 overflow-y-auto">
-        <div class="px-4 py-1.5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted">Settings</div>
+      <aside class="w-44 lg:w-52 xl:w-56 shrink-0 border-r border-subtle flex flex-col py-1 overflow-y-auto">
+        <div class="px-2 py-1 mb-0.5 text-[length:var(--nt-chrome-font-tip)] font-semibold uppercase tracking-widest text-muted">Settings</div>
         {#each sections as sec (sec.id)}
           {@const active = activeSection === sec.id}
           {@const Icon = sec.icon}
           <button
             onclick={() => activeSection = sec.id}
-            class="relative flex items-center gap-2.5 px-3 py-2 text-sm rounded mx-1.5 my-0.5 transition-colors text-left"
+            class="relative flex items-center gap-2 px-2 mx-1 my-px text-xs rounded-[2px] text-left nt-menu-item"
             class:bg-selected={active}
             class:text-primary={active}
             class:text-secondary={!active}
             class:hover:bg-hover={!active}
           >
             <span
-              class="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-accent transition-opacity {active ? 'opacity-100' : 'opacity-0'}"
+              class="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-accent {active ? 'opacity-100' : 'opacity-0'}"
               aria-hidden="true"
             ></span>
-            <Icon size={14} class="shrink-0" strokeWidth={2} />
+            <Icon size={12} class="shrink-0" strokeWidth={2} />
             <span class="truncate">{sec.label}</span>
           </button>
         {/each}
@@ -627,22 +594,22 @@
       <!-- Main content -->
       <div class="flex-1 flex flex-col overflow-hidden min-w-0">
         <!-- Search bar -->
-        <div class="px-4 py-3 border-b border-subtle shrink-0">
+        <div class="px-2 py-2 border-b border-subtle shrink-0">
           <div class="relative max-w-xs">
-            <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" size={13} />
+            <Search class="absolute left-2 top-1/2 -translate-y-1/2 text-muted" size={12} />
             <input
               bind:this={searchInputEl}
               type="text"
               placeholder="Search settings..."
               bind:value={searchQuery}
-              class="w-full pl-8 pr-3 py-1.5 text-sm rounded outline-none border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
+              class="w-full pl-7 pr-2 h-[var(--nt-control-height)] text-xs rounded-[2px] outline-none border bg-editor border-subtle text-primary placeholder-muted focus:border-focus"
             />
             {#if filteredResults && filteredResults.length > 0}
-              <div class="absolute top-full left-0 right-0 mt-1 rounded border border-subtle bg-elevated shadow-elevated overflow-hidden z-50 max-h-72 overflow-y-auto">
+              <div class="absolute top-full left-0 right-0 mt-1 rounded-[2px] border border-subtle bg-elevated shadow-elevated overflow-hidden z-50 max-h-72 overflow-y-auto nt-menu-panel">
                 {#each filteredResults as result (result.id)}
                   <button
                     onclick={() => scrollToSetting(result.id)}
-                    class="w-full text-left px-3 py-2 text-sm hover:bg-hover text-secondary hover:text-primary transition-colors flex items-center gap-2"
+                    class="nt-menu-item text-left gap-2 text-secondary hover:bg-hover hover:text-primary"
                   >
                     <Search size={12} class="shrink-0 text-muted" />
                     <span class="truncate">{result.label}</span>
@@ -651,8 +618,8 @@
                 {/each}
               </div>
             {:else if searchQuery.trim() && filteredResults?.length === 0}
-              <div class="absolute top-full left-0 right-0 mt-1 rounded border border-subtle bg-elevated shadow-elevated overflow-hidden z-50">
-                <div class="px-3 py-2 text-sm text-muted">No settings found for "{searchQuery}"</div>
+              <div class="absolute top-full left-0 right-0 mt-1 rounded-[2px] border border-subtle bg-elevated shadow-elevated overflow-hidden z-50">
+                <div class="px-2 py-1 text-xs text-muted">No settings found for "{searchQuery}"</div>
               </div>
             {/if}
           </div>

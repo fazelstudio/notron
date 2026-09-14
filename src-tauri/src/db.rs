@@ -1,6 +1,7 @@
-// Db
-//
-// Rust module.
+//! Database
+//! 
+//! SQLite persistence with connection pooling for settings and session state.
+
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, Result as SqlResult, params};
@@ -31,7 +32,7 @@ pub struct Bookmark {
     pub created_at: i64,
 }
 
-// Tiered State Structs
+// Tiered state structures for staged startup.
 
 /// Tier 1: Critical State — must load before first render (<20ms)
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

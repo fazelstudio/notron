@@ -1,6 +1,7 @@
-// Ignore Rules
-//
-// Rust module.
+//! Ignore Rules
+//! 
+//! Layered ignore logic for explorer, search, and file watching.
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -35,8 +36,7 @@ use std::sync::OnceLock;
 /// win over the built-in defaults, exactly like git semantics.
 
 // ── Layer 1 — Explorer Hard Exclude ─────────────────────────────────────────
-// Items here NEVER appear in the Explorer tree, in any condition. Modeled on
-// VS Code's default `files.exclude`. Do NOT put big folders like node_modules
+// Items here never appear in the Explorer tree. Do not put large build folders like node_modules
 // /dist/build here — that is Layer 2's job.
 pub const EXPLORER_HARD_EXCLUDE: &[&str] = &[
     ".git",

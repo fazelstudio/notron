@@ -1,16 +1,9 @@
 <script lang="ts">
 /**
- * ViewTitleMenu
+ * View Title Menu
  *
- * UI component..
+ * Generic title menu for a view or panel driven by the menu registry.
  */
-  /**
-   * View Title Menu
-   *
-   * Generic "..." title menu for a View or Panel. Items come from the menu
-   * registry for the given menuId (e.g. `view/explorer/title`), so a new
-   * action is one registration, never markup.
-   */
   import { menuRegistry, type ResolvedMenuItem } from '../../workbench/menuRegistry';
   import Tooltip from './Tooltip.svelte';
   import { positionMenu, portal } from '../../utils/menuPosition';
@@ -68,7 +61,7 @@
         aria-haspopup="menu"
         aria-expanded={open}
         onclick={toggle}
-        class="p-1 rounded transition-colors hover:bg-hover text-icon-default hover:text-icon-active"
+        class="p-1 rounded hover:bg-hover text-icon-default hover:text-icon-active"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" />
@@ -86,18 +79,18 @@
         use:portal
         role="menu"
         tabindex="-1"
-        class="fixed min-w-[200px] rounded-md border p-1 shadow-elevated z-[2147483646] bg-elevated border-subtle text-primary"
+        class="fixed min-w-[200px] z-[2147483646] nt-menu-panel"
         style="left: {menuPosition.x}px; top: {menuPosition.y}px;"
         onclick={(e) => e.stopPropagation()}
         oncontextmenu={(e) => e.stopPropagation()}
       >
         {#each items as item (item.id)}
           {#if item.separator}
-            <div class="h-px my-1 bg-subtle"></div>
+            <div class="nt-menu-separator"></div>
           {:else}
             <button
               role="menuitem"
-              class="flex items-center justify-between gap-4 w-full px-2 py-1.5 text-xs rounded-sm cursor-pointer select-none outline-none transition-colors {!item.disabled ? 'hover:bg-selected focus:bg-selected text-secondary hover:text-primary' : 'text-muted'}"
+              class="nt-menu-item justify-between gap-4 {!item.disabled ? 'hover:bg-selected focus:bg-selected text-secondary hover:text-primary' : 'text-muted'}"
               disabled={item.disabled}
               onclick={() => handleSelect(item)}
             >
@@ -110,7 +103,7 @@
                 {item.label}
               </span>
               {#if item.shortcut}
-                <span class="ml-auto text-[10px] text-muted opacity-80">{item.shortcut}</span>
+                <span class="ml-4 text-[length:var(--nt-chrome-font-tip)] text-muted opacity-80">{item.shortcut}</span>
               {/if}
             </button>
           {/if}

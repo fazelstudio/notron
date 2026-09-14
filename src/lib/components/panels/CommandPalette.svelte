@@ -1,7 +1,27 @@
+<!--
+ * Command Palette
+ *
+ * Quick-open and command execution overlay.
+-->
+
 <script lang="ts">
   import { paletteStore, type PaletteItem } from '../../stores/palette';
-  import { materialFileIconSvg } from '../../../../extensions/icon-theme-material/src/iconRenderer.svelte';
+  import { settingsStore } from '../../stores/settings.svelte';
+  import { getIconProvider } from '../../icon-theme/registry';
   import { Command as CmdIcon, FileText } from 'lucide-svelte';
+
+  function paletteFileIconSvg(name: string, size = 16): string {
+    try {
+      const theme = settingsStore.effectiveSettings.icon_theme;
+      if (theme === 'off') return '';
+      const provider: any = getIconProvider(theme);
+      if (provider?.getFileIconSvg) {
+        const svg = provider?.getFileIconSvg?.(name, size) as string | undefined;
+        if (svg) return svg;
+      }
+    } catch {}
+    return '';
+  }
 
   let { isOpen, onClose, initialQuery = '' }: { isOpen: boolean; onClose: () => void; initialQuery?: string } = $props();
 
@@ -100,7 +120,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed inset-0 z-[199] bg-black/15 backdrop-blur-[1px]"
+    class="fixed inset-0 z-[199] bg-black/15"
     onclick={onClose}
     onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}
   ></div>
@@ -110,15 +130,14 @@
     tabindex="-1"
     class="fixed z-[200] top-9 left-1/2 -translate-x-1/2
            w-[clamp(360px,38vw,620px)] max-w-[calc(100vw-280px)]
-           rounded-lg border flex flex-col overflow-hidden
-           animate-in fade-in slide-in-from-top-1 duration-150 bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)]"
+           border flex flex-col overflow-hidden nt-dialog-panel"
     style="max-height: min(70vh, 520px); box-shadow: var(--nt-overlay-shadow);"
     role="dialog"
     aria-modal="true"
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
   >
-    <div class="flex items-center gap-2.5 px-3 h-11 shrink-0 border-b bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)]">
+    <div class="flex items-center gap-2 px-2 h-[var(--nt-control-height)] shrink-0 border-b bg-[var(--nt-overlay-bg)] border-[var(--nt-overlay-border)]">
       <span class="shrink-0 text-muted flex items-center justify-center w-5">
         {#if isCommandMode}
           <!-- Chevron / command indicator -->
@@ -140,7 +159,7 @@
       {#if query}
         <button
           aria-label="Clear"
-          class="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-hover text-muted hover:text-primary transition-colors"
+          class="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-hover text-muted hover:text-primary"
           onclick={clearQuery}
           tabindex={-1}
             >
@@ -156,17 +175,17 @@
     <!-- List -->
             <div
       bind:this={listEl}
-      class="overflow-y-auto overflow-x-hidden py-1.5 flex flex-col hover-scrollbar"
+      class="overflow-y-auto overflow-x-hidden py-1 flex flex-col hover-scrollbar"
       style="max-height: 380px;"
       role="listbox"
     >
       {#if !$paletteStore.isLoaded}
-        <div class="px-3 py-8 text-sm text-center text-muted flex flex-col items-center justify-center gap-2.5">
+        <div class="px-3 py-6 text-sm text-center text-muted flex flex-col items-center justify-center gap-2">
           <span class="inline-block w-4 h-4 rounded-full border-2 border-muted border-t-transparent animate-spin"></span>
           <span class="text-xs">Loading workspace files…</span>
         </div>
       {:else if filteredItems.length === 0}
-        <div class="px-3 py-8 text-sm text-center text-muted flex flex-col items-center gap-1.5">
+        <div class="px-3 py-6 text-sm text-center text-muted flex flex-col items-center gap-1.5">
           <span class="text-xs font-medium">No {isCommandMode ? 'commands' : 'files'} found</span>
           <span class="text-[11px] opacity-70">
             {#if isCommandMode}
@@ -185,7 +204,7 @@
             tabindex={-1}
             aria-selected={isSelected}
             data-index={i}
-            class="flex items-center justify-between gap-3 px-3 py-1.5 mx-1 rounded-[4px] cursor-pointer transition-colors select-none"
+            class="flex items-center justify-between gap-3 px-2 mx-1 rounded-[2px] select-none nt-menu-item"
             class:bg-selected={isSelected}
             class:text-on-accent={isSelected}
             class:text-primary={!isSelected}
@@ -196,8 +215,8 @@
             <div class="flex items-center gap-2.5 overflow-hidden min-w-0 flex-1">
               <span class="shrink-0 flex items-center justify-center w-[18px] h-[18px] {isSelected ? 'text-on-accent' : 'text-muted'}">
                 {#if isFile}
-                  <span class="shrink-0 inline-flex items-center justify-center" style="width:16px;height:16px;" aria-hidden="true">
-                    {@html materialFileIconSvg(item.label, 16)}
+              <span class="shrink-0 inline-flex items-center justify-center" style="width:16px;height:16px;" aria-hidden="true">
+                    {@html paletteFileIconSvg(item.label, 16)}
                   </span>
                 {:else if item.category === 'recent'}
                   <FileText size={14} />
@@ -205,12 +224,7 @@
                   <CmdIcon size={13} />
                 {/if}
               </span>
-              <div class="flex flex-col min-w-0 flex-1">
-                <span class="text-[13px] leading-4 truncate {isSelected ? 'text-on-accent' : 'text-primary'}">{item.label}</span>
-                {#if item.description}
-                  <span class="text-[11px] leading-3 truncate {isSelected ? 'text-on-accent/80' : 'text-muted'}">{item.description}</span>
-                {/if}
-              </div>
+              <span class="truncate min-w-0 flex-1 text-[13px] leading-4 {isSelected ? 'text-on-accent' : 'text-primary'}">{item.label}</span>
             </div>
             {#if item.shortcut}
               <kbd class="hidden sm:inline-flex shrink-0 text-[11px] leading-none px-1.5 py-1 rounded border {isSelected ? 'bg-white/15 border-white/20 text-on-accent' : 'bg-input border-subtle text-muted'}">{item.shortcut}</kbd>

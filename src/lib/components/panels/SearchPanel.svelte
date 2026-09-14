@@ -1,3 +1,9 @@
+<!--
+ * Search Panel
+ *
+ * Global search and replace across the workspace.
+-->
+
 <script module lang="ts">
   // SearchLineMatch mirrors src-tauri/src/search.rs — `start`/`end` are byte
   // offsets relative to `text` (the trimmed line); `isContext` marks lines
@@ -30,20 +36,12 @@
   import { SEARCH_DEBOUNCE_MS } from '../../constants';
   import { 
     Replace, ChevronDown, ChevronRight, X, 
-    File, FileCode, FileJson, FileText, Image, Settings, Globe, Hash, Loader2,
-    CaseSensitive, WholeWord
+    Loader2, CaseSensitive, WholeWord
   } from 'lucide-svelte';
   import Tooltip from '../common/Tooltip.svelte';
   import Modal from '../common/Modal.svelte';
   import VirtualList from '../common/VirtualList.svelte';
-
-  const ICON_MAP: Record<string, any> = {
-    ts: FileCode, tsx: FileCode, js: FileCode, jsx: FileCode,
-    rs: FileCode, py: FileCode, go: FileCode,
-    html: Globe, css: Hash, json: FileJson,
-    md: FileText, svg: Image, png: Image, jpg: Image,
-    toml: Settings, yaml: Settings, yml: Settings,
-  };
+  import FileIcon from '../common/FileIcon.svelte';
 
   // Cap total matches so the backend scan stops early and the UI never
   // accumulates unbounded results (matches the Rust MAX default of 10k).
@@ -518,7 +516,7 @@
 <div class="flex flex-col p-2 gap-2 h-full text-primary">
   <div class="flex flex-col gap-1.5 shrink-0">
     <div class="flex items-start gap-1">
-      <button aria-label="Toggle replace" onclick={() => isReplaceVisible = !isReplaceVisible} class="mt-1 p-0.5 rounded cursor-pointer transition-colors hover:bg-hover">
+      <button aria-label="Toggle replace" onclick={() => isReplaceVisible = !isReplaceVisible} class="mt-1 p-0.5 rounded hover:bg-hover">
         {#if isReplaceVisible}
           <ChevronDown size={16} />
         {:else}
@@ -527,29 +525,29 @@
       </button>
       <div class="flex flex-col flex-1 gap-1.5 min-w-0">
         <div class="flex items-center flex-1 border rounded px-1.5 py-1 border-subtle bg-canvas focus-within:border-focus">
-          <input id="global-search-input" type="text" placeholder="Search" bind:value={searchQuery} onkeydown={handleKeydown} oninput={() => { historyIndex = -1; }} class="flex-1 bg-transparent text-sm outline-none min-w-0 placeholder-muted" />
+          <input id="global-search-input" type="text" placeholder="Search" bind:value={searchQuery} onkeydown={handleKeydown} oninput={() => { historyIndex = -1; }} class="flex-1 bg-transparent text-xs outline-none min-w-0 placeholder-muted" />
           <Tooltip content="Match Case" wrapperClass="shrink-0 flex items-center">
-            <button aria-label="Match Case" class="p-0.5 rounded cursor-pointer transition-colors text-icon-default hover:text-icon-active hover:bg-hover {caseSensitive ? 'text-accent' : ''}" onclick={() => caseSensitive = !caseSensitive}>
-              <CaseSensitive size={14} />
+            <button aria-label="Match Case" class="p-0.5 rounded text-icon-default hover:text-icon-active hover:bg-hover {caseSensitive ? 'text-accent' : ''}" onclick={() => caseSensitive = !caseSensitive}>
+              <CaseSensitive size={12} />
             </button>
           </Tooltip>
           <Tooltip content="Match Whole Word" wrapperClass="shrink-0 flex items-center ml-0.5">
-            <button aria-label="Match Whole Word" class="p-0.5 rounded cursor-pointer transition-colors text-icon-default hover:text-icon-active hover:bg-hover {wholeWord ? 'text-accent' : ''}" onclick={() => wholeWord = !wholeWord}>
-              <WholeWord size={14} />
+            <button aria-label="Match Whole Word" class="p-0.5 rounded text-icon-default hover:text-icon-active hover:bg-hover {wholeWord ? 'text-accent' : ''}" onclick={() => wholeWord = !wholeWord}>
+              <WholeWord size={12} />
             </button>
           </Tooltip>
           {#if isSearching}
-            <button aria-label="Cancel search" onclick={handleCancel} class="p-0.5 rounded cursor-pointer shrink-0 ml-1 text-icon-default hover:text-icon-active hover:bg-hover transition-colors">
-              <X size={14} />
+            <button aria-label="Cancel search" onclick={handleCancel} class="p-0.5 rounded shrink-0 ml-1 text-icon-default hover:text-icon-active hover:bg-hover">
+              <X size={12} />
             </button>
           {/if}
         </div>
         {#if isReplaceVisible}
         <div class="flex items-center flex-1 border rounded px-1.5 py-1 border-subtle bg-canvas focus-within:border-focus">
-            <input type="text" placeholder="Replace" bind:value={replaceQuery} onkeydown={(e) => { if (e.key === 'Enter' && results.length > 0 && searchQuery !== replaceQuery) { e.preventDefault(); showReplaceModal = true; } }} class="flex-1 bg-transparent text-sm outline-none min-w-0 placeholder-muted" />
+            <input type="text" placeholder="Replace" bind:value={replaceQuery} onkeydown={(e) => { if (e.key === 'Enter' && results.length > 0 && searchQuery !== replaceQuery) { e.preventDefault(); showReplaceModal = true; } }} class="flex-1 bg-transparent text-xs outline-none min-w-0 placeholder-muted" />
             <Tooltip content="Replace All" wrapperClass="ml-1 shrink-0 flex items-center">
-              <button aria-label="Replace All" onclick={() => { if (results.length > 0) showReplaceModal = true; }} disabled={results.length === 0 || searchQuery === replaceQuery} class="p-0.5 rounded cursor-pointer transition-colors text-icon-default hover:text-icon-active hover:bg-hover disabled:opacity-30 disabled:cursor-not-allowed">
-                <Replace size={14} />
+              <button aria-label="Replace All" onclick={() => { if (results.length > 0) showReplaceModal = true; }} disabled={results.length === 0 || searchQuery === replaceQuery} class="p-0.5 rounded text-icon-default hover:text-icon-active hover:bg-hover disabled:opacity-30 disabled:cursor-not-allowed">
+                <Replace size={12} />
               </button>
             </Tooltip>
           </div>
@@ -557,32 +555,31 @@
       </div>
     </div>
   </div>
-  <div class="flex-1 overflow-y-auto mt-2 text-sm hover-scrollbar">
+  <div class="flex-1 overflow-y-auto mt-1 text-xs hover-scrollbar">
     {#if isSearching}
       <div class="flex items-center gap-2 px-6 text-xs text-muted">
         <Loader2 size={12} class="animate-spin" />
         <span>Searching... {filesScanned} files scanned, {matchesFound} matches found</span>
-        <button onclick={handleCancel} class="underline ml-2 transition-colors text-icon-default hover:text-icon-active">Cancel</button>
+        <button onclick={handleCancel} class="underline ml-2 text-icon-default hover:text-icon-active">Cancel</button>
       </div>
     {:else if results.length > 0}
       <div class="text-xs px-6 pb-1 text-muted">{matchesFound} results in {fileCount} files</div>
       <VirtualList items={displayRows} itemHeight={24} getKey={(row) => row.key}>
         {#snippet item({ item })}
           {#if item.type === 'file'}
-            {@const Icon = ICON_MAP[item.path.split('.').pop()?.toLowerCase() || ''] || File}
             {@const isCollapsed = collapsedFiles.has(item.path)}
-            <div class="flex items-center gap-1.5 px-2 h-6 cursor-pointer select-none group w-full overflow-hidden hover:bg-hover transition-colors {item.excluded ? 'opacity-40' : ''}" role="treeitem" tabindex="0" aria-expanded={!isCollapsed} aria-selected="false" onclick={(e) => toggleFileCollapse(item.path, e)} onkeydown={(e) => { if (e.key === 'Enter') toggleFileCollapse(item.path, e); }}>
-              <span class="shrink-0 text-muted transition-transform {isCollapsed ? '-rotate-90' : ''}">
-                <ChevronDown size={14} />
+            <div class="flex items-center gap-1.5 px-2 h-6 select-none group w-full overflow-hidden hover:bg-hover {item.excluded ? 'opacity-40' : ''}" role="treeitem" tabindex="0" aria-expanded={!isCollapsed} aria-selected="false" onclick={(e) => toggleFileCollapse(item.path, e)} onkeydown={(e) => { if (e.key === 'Enter') toggleFileCollapse(item.path, e); }}>
+              <span class="shrink-0 text-muted {isCollapsed ? '-rotate-90' : ''}">
+                <ChevronDown size={12} />
               </span>
               <span class="shrink-0 text-accent">
-                <Icon size={14} />
+                <FileIcon name={item.path.split('/').pop() || ''} size={12} />
               </span>
               <Tooltip content={item.path} wrapperClass="truncate min-w-0 flex-1 flex items-center" followCursor={true} hoverDelay={2000}>
                 <span class="text-xs truncate min-w-0 font-medium">{item.path.split(/[\/\\]/).pop()}</span>
               </Tooltip>
-              <span class="text-[10px] px-1 rounded-full shrink-0 bg-panel text-muted">{item.matchCount}</span>
-              <button aria-label={item.excluded ? "Include file" : "Exclude file"} class="shrink-0 p-0.5 rounded text-icon-default opacity-0 group-hover:opacity-100 hover:text-icon-active hover:bg-hover transition-all" onclick={(e) => toggleExclude(item.path, e)}>
+              <span class="text-[length:var(--nt-chrome-font-tip)] px-1 rounded-full shrink-0 bg-panel text-muted">{item.matchCount}</span>
+              <button aria-label={item.excluded ? "Include file" : "Exclude file"} class="shrink-0 p-0.5 rounded text-icon-default opacity-0 group-hover:opacity-100 hover:text-icon-active hover:bg-hover" onclick={(e) => toggleExclude(item.path, e)}>
                 <X size={12} />
               </button>
             </div>
@@ -591,7 +588,7 @@
             {@const isContext = !!res.isContext}
             {@const preview = isContext ? (res.text.trim() ? [{ text: res.text.trim(), isMatch: false }] : []) : highlightMatchParts(res)}
             <Tooltip content={res.text.trim()} wrapperClass="w-full block" followCursor={true} hoverDelay={2000}>
-              <div class="flex items-start gap-2 pl-8 pr-2 h-6 py-[3px] cursor-pointer text-xs group text-secondary hover:text-primary hover:bg-hover transition-colors overflow-hidden {isContext ? 'opacity-60' : ''}" role="option" tabindex="0" aria-selected="false" onclick={() => handleResultClick(item.path, res)} onkeydown={(e) => { if (e.key === 'Enter') handleResultClick(item.path, res); }}>
+              <div class="flex items-start gap-2 pl-8 pr-2 h-6 py-[3px] text-xs group text-secondary hover:text-primary hover:bg-hover overflow-hidden {isContext ? 'opacity-60' : ''}" role="option" tabindex="0" aria-selected="false" onclick={() => handleResultClick(item.path, res)} onkeydown={(e) => { if (e.key === 'Enter') handleResultClick(item.path, res); }}>
                 <span class="shrink-0 w-8 text-right select-none opacity-50 text-muted">{res.line}</span>
                 <span class="truncate flex-1 group-hover:text-primary font-mono text-[11px] mt-[1px]">
                   {#each preview as part}
@@ -620,14 +617,14 @@
   title="Confirm Replace All" 
   onClose={() => showReplaceModal = false}
 >
-  <div class="p-4 flex flex-col gap-3">
-    <p class="text-sm">Are you sure you want to replace all occurrences of <strong>{searchQuery}</strong> with <strong>{replaceQuery}</strong>?</p>
+  <div class="p-2 flex flex-col gap-2">
+    <p class="text-xs">Are you sure you want to replace all occurrences of <strong>{searchQuery}</strong> with <strong>{replaceQuery}</strong>?</p>
     <p class="text-xs text-muted">This will replace {matchesFound} matches across {fileCount} files. Hover a file and press <span class="font-mono">X</span> to exclude it from the operation.</p>
   </div>
   {#snippet footer()}
     <div class="flex justify-end gap-2 w-full">
-      <button class="px-3 py-1.5 text-sm rounded hover:bg-hover transition-colors" onclick={() => showReplaceModal = false}>Cancel</button>
-      <button class="px-3 py-1.5 text-sm rounded bg-accent text-on-accent hover:bg-accent/90 transition-colors" onclick={executeReplaceAll}>Yes, Replace it</button>
+      <button class="nt-control hover:bg-hover" onclick={() => showReplaceModal = false}>Cancel</button>
+      <button class="nt-control bg-accent text-on-accent hover:bg-accent/90" onclick={executeReplaceAll}>Yes, Replace it</button>
     </div>
   {/snippet}
 </Modal>

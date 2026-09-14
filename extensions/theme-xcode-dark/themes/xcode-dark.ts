@@ -1,2 +1,7 @@
-// placeholder for xcode-dark
+/**
+ * Xcode Dark Theme
+ *
+ * Theme definition placeholder for xcode-dark.
+ */
+
 export {};

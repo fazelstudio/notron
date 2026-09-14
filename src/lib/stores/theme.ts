@@ -6,7 +6,7 @@
 
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
-import { THEMES } from '../theme/registry';
+import { getTheme } from '../theme/registry';
 import { THEME_KEY, SYSTEM_THEME } from '../constants';
 import { applyNtTheme } from '../theme/theme-bridge';
 
@@ -27,9 +27,9 @@ function loadTheme(): string {
 
 function computeIsDark(theme: string): boolean {
   if (theme === SYSTEM_THEME) return getSystemTheme();
-  // Named themes know their darkness from THEMES; anything else (legacy ids)
-  // falls back to a 'dark' substring match.
-  return THEMES[theme]?.isDark ?? theme.includes('dark');
+  const info = getTheme(theme);
+  if (info) return !!info.isDark;
+  return theme.includes('dark');
 }
 
 function applyThemeToDom(theme: string, isDark: boolean) {

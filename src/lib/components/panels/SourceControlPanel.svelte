@@ -1,3 +1,9 @@
+<!--
+ * Source Control Panel
+ *
+ * Git source control view with staging, commits, and branch actions.
+-->
+
 <script lang="ts">
   import { eventBus } from '../../utils/eventBus';
   import { uiStore } from '../../stores/ui';
@@ -15,9 +21,7 @@
   import { commandRegistry } from '../../commands/registry';
   import Tooltip from '../common/Tooltip.svelte';
   import FileIcon from '../common/FileIcon.svelte';
-  import { getFileIcon } from '../../icon-theme/default';
   import { getGitStatusStyle, getExpandedFileStatusStyle } from '../../utils/gitStatusStyles';
-  import { settingsStore } from '../../stores/settings.svelte';
 
   const ui = uiStore;
 
@@ -43,7 +47,6 @@
   let expandedCommit = $state<string | null>(null);
   let expandedCommitFiles = $state<import('../../services/git').GitFileStatus[]>([]);
   let expandedCommitLoading = $state(false);
-  const iconTheme = $derived(settingsStore.effectiveSettings.icon_theme);
   const expandedCommitTree = $derived(buildChangeTree(expandedCommitFiles));
 
   async function toggleCommitExpansion(commitHash: string) {
@@ -199,12 +202,8 @@
   import { getGitFileContent, getCommitFiles } from '../../services/git';
   import type { EditorTab } from '../../stores/editor';
 
-  /** Open (or activate) a tab in the active split pane — SplitEditorPane renders
-   *  pane tabs from the split store, so every add is mirrored into it.
-   *  Preview-tab rules: an already-open tab is only activated (never reloaded);
-   *  otherwise an unmodified current tab is replaced in place, and a new tab is
-   *  only added when the current tab has unsaved changes. Returns whether the
-   *  tab was actually added/replaced (false = existing tab was only activated). */
+  // Open or activate a tab in the active split pane. Preview rules avoid reloading existing tabs
+  // and replace unmodified current tabs in place.
   function addTabToActivePane(newTab: EditorTab, matchByPath = false): { id: string; isNew: boolean } {
     const splitSnap = splitStore.getSnapshot();
     const activePaneId = splitSnap.activePaneId;
@@ -239,14 +238,13 @@
     return { id: newTab.id, isNew: true };
   }
 
-  /** Copy the up-to-date tab from the editor store back into the split store
-   *  (SplitEditorPane reads the split store, so content must land there). */
+  // Copy the up-to-date tab from the editor store back into the split store.
   function syncTabToPanes(tabId: string) {
     const updatedTab = editorStore.getTabsSnapshot().find((t) => t.id === tabId);
     if (updatedTab) splitStore.updateTabInAllPanes(updatedTab);
   }
 
-  /** Open a plain, explorer-style tab — eagerly reads from disk. */
+  // Open a plain explorer-style tab by eagerly reading from disk.
   async function openPlainTab(fullPath: string, name: string) {
     const splitSnap = splitStore.getSnapshot();
     const activePaneId = splitSnap.activePaneId;
@@ -295,9 +293,7 @@
     addTabToActivePane(tab, true);
   }
 
-  /** Changes section — modified files open a "Working Tree" diff with the
-   *  right side editable; new/untracked files open like the explorer. SVG is
-   *  text here, so it participates in the diff like any other code file. */
+  // Changes section: modified files open a working tree diff with editable right side.
   async function openFile(file: GitFileStatus) {
     if (!$ui.explorerRoot) return;
     const fullPath = `${$ui.explorerRoot}/${file.path}`;
@@ -362,9 +358,7 @@
     });
   }
 
-  /** Graph section — a commit file opens at that revision: plain read-only tab
-   *  when the file is new, read-only diff against its parent otherwise.
-   *  Commit tabs always show code (no preview) — diffs are the comparison. */
+  // Graph section: commit files open at that revision as read-only tabs or diffs.
   async function openCommitFile(file: GitFileStatus, commitHash: string, parentHash?: string | null) {
     if (!$ui.explorerRoot) return;
     const fullPath = `${$ui.explorerRoot}/${file.path}`;
@@ -546,7 +540,7 @@
       {#if node.type === 'folder'}
         <div class="relative flex flex-col">
           <div class="sticky shadow-elevated-sm h-7 flex items-center" style="background-color: var(--tree-bg, var(--color-surface)); top: {28 + depth * 28}px; z-index: {20 - depth};">
-            <div role="button" tabindex="0" class="flex-1 flex items-center py-1 hover:bg-hover group cursor-pointer h-7" style="padding-left: calc(var(--base-pad, 0px) + {6 + depth * 14}px); padding-right: 12px;" onclick={() => toggleCollapse(node.path)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleCollapse(node.path); }}>
+            <div role="button" tabindex="0" class="flex-1 flex items-center py-1 hover:bg-hover group h-[var(--nt-tree-row-height)]" style="padding-left: calc(var(--base-pad, 0px) + {6 + depth * 14}px); padding-right: 12px;" onclick={() => toggleCollapse(node.path)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleCollapse(node.path); }}>
               <span class="w-3.5 mr-1 flex items-center justify-center text-icon-default shrink-0">
                 {#if node.count > 0}
                   {#if collapsed.has(node.path)}
@@ -572,14 +566,9 @@
   {/snippet}
 
   {#snippet fileRow(file: import('../../services/git').GitFileStatus, statusStyle: string, depth = 0, actions: import('svelte').Snippet<[import('../../services/git').GitFileStatus]> = noActions, onOpen: (file: import('../../services/git').GitFileStatus) => void = openFile)}
-    {@const Icon = getFileIcon(file.path.split('/').pop() || '')}
-    <div role="button" tabindex="0" class="flex items-center justify-between py-1 hover:bg-hover group cursor-pointer h-8" style="padding-left: calc(var(--base-pad, 0px) + {12 + depth * 14}px); padding-right: 12px;" onclick={() => onOpen(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(file); }}>
+    <div role="button" tabindex="0" class="flex items-center justify-between py-1 hover:bg-hover group h-[var(--nt-tree-row-height)]" style="padding-left: calc(var(--base-pad, 0px) + {12 + depth * 14}px); padding-right: 12px;" onclick={() => onOpen(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(file); }}>
       <div class="flex items-center gap-2 overflow-hidden flex-1">
-        {#if iconTheme === 'material'}
-          <FileIcon name={file.path.split('/').pop() || ''} size={14} />
-        {:else}
-          <Icon size={14} class="shrink-0" style={statusStyle} />
-        {/if}
+        <FileIcon name={file.path.split('/').pop() || ''} size={14} />
         <span class="text-sm truncate" style={statusStyle}>{file.path.split('/').pop()}</span>
         <span class="text-[10px] text-muted truncate">{file.path.split('/').slice(0, -1).join('/')}</span>
       </div>
@@ -615,13 +604,13 @@
         <div class="flex items-center gap-2">
           <button
             onclick={handleRedetect}
-            class="flex items-center gap-1 px-3 py-1.5 bg-panel-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors font-medium"
+            class="nt-control flex items-center gap-1 bg-panel-2 hover:bg-hover border border-subtle text-secondary text-xs font-medium"
           >
             <RefreshCw class="w-3.5 h-3.5" /> Re-detect
           </button>
           <button
             onclick={openManualPathSettings}
-            class="flex items-center gap-1 px-3 py-1.5 bg-panel-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors font-medium"
+            class="nt-control flex items-center gap-1 bg-panel-2 hover:bg-hover border border-subtle text-secondary text-xs font-medium"
           >
             <Settings class="w-3.5 h-3.5" /> Set Path…
           </button>
@@ -636,9 +625,9 @@
             class="w-full bg-panel-2 border border-subtle focus:border-accent outline-none rounded p-2 text-xs text-primary"
           />
           <div class="flex items-center gap-2 justify-end">
-            <button onclick={saveManualPath} class="px-3 py-1.5 bg-accent hover:bg-accent-hover text-on-accent rounded text-xs transition-colors font-medium">Save</button>
+            <button onclick={saveManualPath} class="nt-control bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium">Save</button>
             {#if availability.path}
-              <button onclick={clearManualPath} class="px-3 py-1.5 bg-panel-2 hover:bg-hover border border-subtle text-secondary rounded text-xs transition-colors">Clear</button>
+              <button onclick={clearManualPath} class="nt-control bg-panel-2 hover:bg-hover border border-subtle text-secondary text-xs">Clear</button>
             {/if}
             <button onclick={() => showManualPath = false} class="p-1.5 rounded hover:bg-hover text-icon-default"><X class="w-3.5 h-3.5" /></button>
           </div>
@@ -655,7 +644,7 @@
       <span class="text-sm text-muted">The workspace is not a Git repository.</span>
       <button
         onclick={handleInit}
-        class="px-4 py-2 bg-accent hover:bg-accent-hover text-on-accent rounded text-sm transition-colors w-full"
+        class="nt-control bg-accent hover:bg-accent-hover text-on-accent w-full"
       >
         Initialize Repository
       </button>
@@ -681,17 +670,17 @@
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="fixed inset-0 z-40" onclick={() => showChangesMenu = false}></div>
-          <div class="absolute right-0 top-6 z-50 w-48 bg-panel border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
-            <button onclick={() => { sourceControlStore.setChangesView('list'); showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+          <div class="absolute right-0 top-6 z-50 w-48 nt-menu-panel flex flex-col text-xs text-primary">
+            <button onclick={() => { sourceControlStore.setChangesView('list'); showChangesMenu = false; }} class="nt-menu-item hover:bg-hover">
               <span class="w-4 flex justify-center shrink-0 mr-1">{#if !isChangesTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
               View as List
             </button>
-            <button onclick={() => { sourceControlStore.setChangesView('tree'); showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+            <button onclick={() => { sourceControlStore.setChangesView('tree'); showChangesMenu = false; }} class="nt-menu-item hover:bg-hover">
               <span class="w-4 flex justify-center shrink-0 mr-1">{#if isChangesTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
               View as Tree
             </button>
             <div class="h-px bg-subtle my-1"></div>
-            <button onclick={() => { openGitOutput(); showChangesMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+            <button onclick={() => { openGitOutput(); showChangesMenu = false; }} class="nt-menu-item hover:bg-hover">
               <span class="w-4 flex justify-center shrink-0 mr-1"></span>
               View Git Output
             </button>
@@ -717,7 +706,7 @@
           <button
             onclick={handlePush}
             disabled={syncing}
-            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border border-transparent"
+            class="nt-control justify-center gap-2 w-full mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted text-on-accent text-xs font-medium border border-transparent"
           >
             {#if syncing}
               <Loader2 class="w-4 h-4 animate-spin" />
@@ -739,7 +728,7 @@
               }
             }}
             disabled={syncing}
-            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border border-transparent"
+            class="nt-control justify-center gap-2 w-full mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted text-on-accent text-xs font-medium border border-transparent"
           >
             {#if syncing}
               <Loader2 class="w-4 h-4 animate-spin" />
@@ -751,7 +740,7 @@
         {:else}
           <button
             disabled={true}
-            class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border disabled:border-subtle border-transparent"
+            class="nt-control justify-center gap-2 w-full mt-1 bg-accent disabled:bg-panel-2 disabled:text-muted text-on-accent text-xs font-medium border disabled:border-subtle border-transparent"
           >
             <span>Commit</span>
           </button>
@@ -760,7 +749,7 @@
         <button
           onclick={handleCommit}
           disabled={isCommitting || !commitMessage.trim()}
-          class="flex items-center justify-center gap-2 w-full py-2 mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded text-sm transition-colors font-medium border disabled:border-subtle border-transparent"
+          class="nt-control justify-center gap-2 w-full mt-1 bg-accent hover:bg-accent-hover disabled:bg-panel-2 disabled:text-muted text-on-accent text-xs font-medium border disabled:border-subtle border-transparent"
         >
           {#if isCommitting}
             <Loader2 class="w-4 h-4 animate-spin" />
@@ -773,7 +762,7 @@
         <div class="flex flex-col gap-1 mt-1">
           <div class="w-full h-1 bg-panel-3 rounded overflow-hidden">
             <div
-              class="h-full bg-accent transition-all"
+              class="h-full bg-accent"
               style="width: {Math.min(progress.percent ?? 100, 100)}%"
             ></div>
           </div>
@@ -875,12 +864,12 @@
       {#if changesVisible && graphVisible}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div class="h-[3px] bg-subtle hover:bg-accent cursor-ns-resize transition-colors shrink-0 relative z-20" onmousedown={startResize} role="separator" tabindex="0"></div>
+        <div class="h-[3px] bg-subtle hover:bg-accent cursor-ns-resize shrink-0 relative z-20" onmousedown={startResize} role="separator" tabindex="0"></div>
       {/if}
 
       <!-- Collapsed header for Changes if hidden -->
       {#if !changesVisible}
-        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-panel-2 border-b border-subtle cursor-pointer hover:bg-hover shrink-0" onclick={() => changesVisible = !changesVisible} onkeydown={(e) => { if (e.key === 'Enter') changesVisible = !changesVisible; }}>
+        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-panel-2 border-b border-subtle hover:bg-hover shrink-0" onclick={() => changesVisible = !changesVisible} onkeydown={(e) => { if (e.key === 'Enter') changesVisible = !changesVisible; }}>
           <ChevronRight class="w-3.5 h-3.5 mr-1 text-icon-default" />
           <span class="text-xs font-semibold uppercase text-secondary">Changes</span>
           <span class="ml-auto bg-panel-3 rounded-full px-1.5 py-0.5 text-[10px]">{repo.staged.length + repo.unstaged.length + repo.untracked.length + repo.conflicted.length}</span>
@@ -889,7 +878,7 @@
 
       <!-- Collapsed header for Graph if hidden -->
       {#if !graphVisible}
-        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-panel-2 border-b border-subtle cursor-pointer hover:bg-hover shrink-0" onclick={() => graphVisible = !graphVisible} onkeydown={(e) => { if (e.key === 'Enter') graphVisible = !graphVisible; }}>
+        <div role="button" tabindex="0" class="flex items-center px-2 py-1 bg-panel-2 border-b border-subtle hover:bg-hover shrink-0" onclick={() => graphVisible = !graphVisible} onkeydown={(e) => { if (e.key === 'Enter') graphVisible = !graphVisible; }}>
           <ChevronRight class="w-3.5 h-3.5 mr-1 text-icon-default" />
           <span class="text-xs font-semibold uppercase text-secondary">Graph</span>
         </div>
@@ -898,7 +887,7 @@
       <!-- Bottom Section: GRAPH -->
       <div class="flex flex-col overflow-hidden" style="flex: {graphVisible ? graphFlex : 0}; min-height: {graphVisible ? '40px' : '0'}; display: {graphVisible ? 'flex' : 'none'};">
         <div class="flex items-center justify-between px-2 py-1 bg-panel-2 border-b border-y border-subtle shrink-0 relative">
-          <div role="button" tabindex="0" class="flex items-center cursor-pointer hover:bg-hover flex-1" onclick={() => graphVisible = !graphVisible} onkeydown={(e) => { if (e.key === 'Enter') graphVisible = !graphVisible; }}>
+          <div role="button" tabindex="0" class="flex items-center hover:bg-hover flex-1" onclick={() => graphVisible = !graphVisible} onkeydown={(e) => { if (e.key === 'Enter') graphVisible = !graphVisible; }}>
             <ChevronDown class="w-3.5 h-3.5 mr-1 text-icon-default" />
             <span class="text-xs font-semibold uppercase text-secondary">Graph</span>
           </div>
@@ -943,11 +932,11 @@
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="fixed inset-0 z-40" onclick={() => showGraphMenu = false}></div>
             <div class="absolute right-0 top-8 z-50 w-48 bg-panel border border-subtle rounded shadow-elevated flex flex-col py-1 text-xs text-primary">
-              <button onclick={() => { sourceControlStore.setGraphView('list'); showGraphMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+              <button onclick={() => { sourceControlStore.setGraphView('list'); showGraphMenu = false; }} class="nt-menu-item hover:bg-hover">
                 <span class="w-4 flex justify-center shrink-0 mr-1">{#if !isGraphTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
                 View as List
               </button>
-              <button onclick={() => { sourceControlStore.setGraphView('tree'); showGraphMenu = false; }} class="flex items-center px-3 py-1.5 hover:bg-hover transition-colors">
+              <button onclick={() => { sourceControlStore.setGraphView('tree'); showGraphMenu = false; }} class="nt-menu-item hover:bg-hover">
                 <span class="w-4 flex justify-center shrink-0 mr-1">{#if isGraphTreeView}<Check class="w-3.5 h-3.5" />{/if}</span>
                 View as Tree
               </button>
@@ -966,12 +955,12 @@
                   unstyled={true} 
                   pointerEvents={true}
                   hoverDelay={400}
-                  wrapperClass="flex w-full items-center hover:bg-hover group cursor-pointer h-7 sticky top-0 z-30 bg-panel border-y border-transparent hover:border-subtle transition-colors"
+                  wrapperClass="flex w-full items-center hover:bg-hover group h-[var(--nt-tree-row-height)] sticky top-0 z-30 bg-panel border-y border-transparent hover:border-subtle"
                 >
                   {#snippet customContent()}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
-                    <div class="w-[360px] bg-panel-2 border border-subtle rounded-md shadow-elevated flex flex-col pointer-events-auto cursor-default text-primary relative ml-2" onclick={(e) => e.stopPropagation()}>
+                    <div class="w-[360px] nt-menu-panel flex flex-col pointer-events-auto cursor-default text-primary relative ml-2" onclick={(e) => e.stopPropagation()}>
                       <!-- Arrow (placed behind container to hide its right half) -->
                       <div class="absolute -left-[6px] top-1/2 -translate-y-1/2 w-3 h-3 bg-panel-2 border-l border-b border-subtle rotate-45 -z-10 rounded-sm"></div>
                       

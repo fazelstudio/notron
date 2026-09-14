@@ -1,2 +1,7 @@
-// placeholder for copilot
+/**
+ * Copilot Theme
+ *
+ * Theme definition placeholder for copilot.
+ */
+
 export {};

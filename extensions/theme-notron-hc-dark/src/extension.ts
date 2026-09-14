@@ -1,8 +1,7 @@
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
-import { registerTheme } from '../../../src/lib/theme/registry';
-import { __registerTheme } from '../../../packages/notron-sdk/src/api/theming';
+import { theming, type ExtensionContext } from 'notron-sdk';
 export const id = "notron-hc-dark";
 export const label = "High Contrast Dark";
 export const isDark = true;
@@ -20,5 +19,9 @@ const base = EditorView.theme({
 }, { dark: true });
 const hl = HighlightStyle.define([{ tag: t.keyword, color: "#569cd6" }, { tag: t.string, color: "#ce9178" }]);
 export const extension = [base, syntaxHighlighting(hl)];
-registerTheme(id, { extension, settings, isDark, label, uiTheme, isHighContrast });
-__registerTheme({ id, label, uiTheme, path: "./themes/notron-hc-dark.ts", isHighContrast });
+
+export async function activate(context: ExtensionContext): Promise<void> {
+  context.subscriptions.push(theming.registerTheme({ id, label, uiTheme: uiTheme as any, path: "./themes/notron-hc-dark.ts", extension, settings, isDark, isHighContrast }));
+}
+
+export async function deactivate(): Promise<void> {}

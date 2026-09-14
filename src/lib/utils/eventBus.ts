@@ -16,6 +16,7 @@ export interface AppEvents {
   'editor:show-references': { symbol: string; results: any[] };
   'editor:sync-content': { tabId: string; content: string };
   'editor:append-chunk': { tabId: string; chunk: string };
+  'editor:preview-loading': { path: string; loading: boolean };
   'editor:focus-group': { groupId: string };
   'open-command-palette': void;
   'notron:create-file': void;

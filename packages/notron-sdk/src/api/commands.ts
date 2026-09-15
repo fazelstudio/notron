@@ -226,12 +226,12 @@ export function registerCommand(
   if (commandMirror) {
     try {
       mirrorDisposable = commandMirror.register(id, handler);
-    } catch {}
+    } catch { /* ignore */ }
   }
   return toDisposable(() => {
     const cur = registry.get(id);
     if (cur && cur.handler === handler) registry.delete(id);
-    try { mirrorDisposable?.dispose(); } catch {}
+    try { mirrorDisposable?.dispose(); } catch { /* ignore */ }
   });
 }
 

@@ -1,0 +1,70 @@
+name: Publish SDK
+
+# NOTE: GitHub Packages only accepts scoped packages whose scope matches the
+# repo owner, while the source keeps the bare "notron-sdk" name (the runtime
+# contract — require('notron-sdk') — depends on it). So this workflow renames
+# the package to "@fazelstudio/notron-sdk" in CI only, right before publishing
+# to GitHub Packages. Users install it under the bare name via an alias:
+#   npm install notron-sdk@npm:@fazelstudio/notron-sdk
+# npmjs keeps the canonical "notron-sdk" name (published manually).
+on:
+  push:
+    tags: ["notron-sdk-v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/notron-sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun test
+      - run: bun run build
+
+  publish-github:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.repository == 'fazelstudio/notron'
+    defaults:
+      run:
+        working-directory: packages/notron-sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: "@fazelstudio"
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Check tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#notron-sdk-v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then echo "tag $TAG != package.json $PKG"; exit 1; fi
+      - name: Rename to scoped name for GitHub Packages
+        run: npm pkg set name=@fazelstudio/notron-sdk
+      - name: Publish to GitHub Packages
+        run: npm publish --registry https://npm.pkg.github.com --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

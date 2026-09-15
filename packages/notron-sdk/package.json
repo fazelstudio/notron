@@ -1,8 +1,10 @@
 {
   "name": "notron-sdk",
   "version": "0.1.0",
-  "private": true,
   "description": "Notron Extension SDK — public API surface for building Notron extensions.",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,7 +28,9 @@
   },
   "files": [
     "dist",
-    "src/cli/templates"
+    "src/cli/templates",
+    "src/types/manifest.schema.json",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
